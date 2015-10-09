@@ -375,7 +375,7 @@ Signal Signal_receiver::pending_signal()
 }
 
 
-void Signal_receiver::block_until_signal()
+void Signal_receiver::block_for_signal()
 {
 	_signal_available.down();
 }
@@ -386,7 +386,7 @@ Signal Signal_receiver::wait_for_signal()
 	for (;;) {
 
 		/* block until the receiver has received a signal */
-		block_until_signal();
+		block_for_signal();
 
 		try {
 			return pending_signal();

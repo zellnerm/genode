@@ -127,7 +127,7 @@ int main(int argc, char **argv)
 	/* process incoming signals */
 	for (;;) {
 
-		global_sig_rec().block_until_signal();
+		global_sig_rec().block_for_signal();
 
 		/*
 		 * It might happen that we try to forward a signal to the entrypoint,

@@ -253,7 +253,7 @@ class Genode::Signal_receiver : Noncopyable
 		/**
 		 * Block until a signal is received
 		 */
-		void block_until_signal();
+		void block_for_signal();
 
 		/**
 		 * Retrieve  pending signal
