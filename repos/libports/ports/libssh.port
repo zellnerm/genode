@@ -2,7 +2,7 @@ LICENSE   := LGPL
 VERSION   := git
 DOWNLOADS := libssh.git
 
-URL(libssh) := https://git.libssh.org/projects/libssh.git
+URL(libssh) := git://git.libssh.org/projects/libssh.git
 REV(libssh) := tags/libssh-0.5.4
 DIR(libssh) := src/lib/libssh
 
