@@ -22,6 +22,8 @@
 #include <rm_session_component.h>
 #include <platform_generic.h>
 
+#include <ram_session/connection.h>
+
 using namespace Genode;
 
 static constexpr bool verbose = false;
@@ -332,6 +334,7 @@ void Cpu_session_component::_transfer_quota(Cpu_session_component * const dst,
 	if (!quota) { return; }
 	_decr_quota(quota);
 	dst->_incr_quota(quota);
+
 }
 
 
@@ -361,7 +364,8 @@ int Cpu_session_component::transfer_quota(Cpu_session_capability dst_cap,
 		/* transfer quota */
 		_transfer_quota(dst, quota);
 		return 0;
-	};
+	};	
+
 	return _session_ep->apply(dst_cap, lambda);
 }
 
@@ -524,6 +528,11 @@ size_t
 Cpu_session_component::_weight_to_quota(size_t const weight) const {
 	return (weight * _quota) / _weight; }
 
+
+void Cpu_session_component::set(Ram_session_capability ram_cap) 
+{
+	Genode::Ram_connection::Ram_session_client ram(ram_cap);
+}
 
 /****************************
  ** Trace::Source_registry **
