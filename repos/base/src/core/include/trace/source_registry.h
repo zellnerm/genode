@@ -182,7 +182,6 @@ class Genode::Trace::Source_registry
 		{
 			Lock::Guard guard(_lock);
 			_entries.insert(entry);
-			//PDBG("insert:%s", entry->info().label.string());
 		}
 
 		void remove(Source *entry)

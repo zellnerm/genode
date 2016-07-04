@@ -31,6 +31,7 @@ namespace Genode {
 	class Platform_pd;
 	class Platform_thread
 	{
+
 		private:
 
 			enum State { DEAD, RUNNING };
@@ -53,6 +54,7 @@ namespace Genode {
 			unsigned           _prio;
 
 			Affinity::Location _location;
+
 
 			void _create_thread(void);
 			void _finalize_construction(const char *name);

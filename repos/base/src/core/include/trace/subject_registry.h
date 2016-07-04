@@ -238,7 +238,7 @@ class Genode::Trace::Subject
 		{
 			Execution_time execution_time;
 			Affinity::Location affinity;
-			unsigned prio=100;
+			unsigned prio;
 
 			{
 				Locked_ptr<Source> source(_source);
