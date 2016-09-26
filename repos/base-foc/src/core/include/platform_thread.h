@@ -55,7 +55,6 @@ namespace Genode {
 
 			Affinity::Location _location;
 
-
 			void _create_thread(void);
 			void _finalize_construction(const char *name);
 			bool _in_syscall(Fiasco::l4_umword_t flags);
@@ -179,8 +178,9 @@ namespace Genode {
 			 */
 			unsigned long long execution_time() const;
 
-
 			unsigned prio() const;
+
+			unsigned id() const;
 
 			/*******************************
 			 ** Fiasco-specific Accessors **

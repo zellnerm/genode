@@ -283,6 +283,11 @@ unsigned Platform_thread::prio() const
 	return _prio;
 }
 
+unsigned Platform_thread::id() const
+{ 	
+	return _thread.local.dst();
+}
+
 Platform_thread::Platform_thread(const char *name, unsigned prio, addr_t)
 : _state(DEAD),
   _core_thread(false),
