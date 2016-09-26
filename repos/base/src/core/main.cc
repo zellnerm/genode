@@ -40,16 +40,6 @@
 using namespace Genode;
 
 
-/*******************
- ** Trace support **
- *******************/
-
-Trace::Source_registry &Trace::sources()
-{
-	static Trace::Source_registry inst;
-	return inst;
-}
-
 /* pool of provided core services */
 static Service_registry local_services;
 
@@ -70,7 +60,7 @@ Core_env * Genode::core_env()
 	 * By placing the environment as static object here, we ensure that its
 	 * constructor gets called when this function is used the first time.
 	 */
-	static Core_env _env(Trace::sources());
+	static Core_env _env;
 	return &_env;
 }
 
@@ -179,6 +169,15 @@ class Core_child : public Child_policy
 };
 
 
+/*******************
+ ** Trace support **
+ *******************/
+
+Trace::Source_registry &Trace::sources()
+{
+	static Trace::Source_registry inst;
+	return inst;
+}
 
 
 /***************
@@ -225,8 +224,7 @@ int main()
 	local_services.insert(&signal_service);
 
 	static Cap_root     cap_root     (e, &sliced_heap);
-	static Ram_root     ram_root     (e, e, platform()->ram_alloc(), &sliced_heap,
-					  Trace::sources());
+	static Ram_root     ram_root     (e, e, platform()->ram_alloc(), &sliced_heap);
 	static Rom_root     rom_root     (e, e, platform()->rom_fs(), &sliced_heap);
 	static Rm_root      rm_root      (e, e, e, &sliced_heap, core_env()->cap_session(),
 	                                  platform()->vm_start(), platform()->vm_size());
@@ -278,10 +276,6 @@ int main()
 	Ram_session_capability init_ram_session_cap
 		= static_cap_cast<Ram_session>(ram_root.session("ram_quota=32K", Affinity()));
 	Ram_session_client(init_ram_session_cap).ref_account(env()->ram_session_cap());
-	char tmp[64] = "abc\0";
-	Ram_session_client(init_ram_session_cap).set_label(tmp);
-	
-	//Ram_session_client(init_ram_session_cap).set_label("abc123");
 
 	/* create CPU session for init and transfer all of the CPU quota to it */
 	static Cpu_session_component

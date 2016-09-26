@@ -92,8 +92,7 @@ namespace Genode {
 			{
 				return { _session_label, _name,
 				         _platform_thread.execution_time(),
-				         _platform_thread.affinity(),
-					 _platform_thread.prio() };
+				         _platform_thread.affinity() };
 			}
 
 
@@ -245,8 +244,6 @@ namespace Genode {
 			int ref_account(Cpu_session_capability c);
 			int transfer_quota(Cpu_session_capability, size_t);
 			Quota quota() override;
-
-			void set(Ram_session_capability ram_cap);
 
 
 			/***********************************

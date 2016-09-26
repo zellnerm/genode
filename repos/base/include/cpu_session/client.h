@@ -32,9 +32,6 @@ struct Genode::Cpu_session_client : Rpc_client<Cpu_session>
 	Ram_dataspace_capability utcb(Thread_capability thread) override {
 		return call<Rpc_utcb>(thread); }
 
-	void set(Ram_session_capability ram_cap) override {
-		call<Rpc_set>(ram_cap); }
-
 	void kill_thread(Thread_capability thread) override {
 		call<Rpc_kill_thread>(thread); }
 

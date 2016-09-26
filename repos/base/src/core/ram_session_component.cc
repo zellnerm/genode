@@ -87,17 +87,6 @@ int Ram_session_component::_transfer_quota(Ram_session_component *dst, size_t am
 
 	_quota_limit -= amount;
 
-	if(strcmp(_label, "")!=0) {
-		//printf("I am %s, I have %d, I use %d\n", _label, _quota_limit, _payload);
-		_trace_sources.set_quota(_quota_limit, _label);
-	} else {
-		//PDBG("empty label quota:%d used%d", _quota_limit, _payload);
-		
-	}
-	if(strcmp(_label, "i")!=0) {
-		//PDBG("init changed");
-	}
-
 	/* increase quota_limit of recipient */
 	dst->_quota_limit += amount;
 
@@ -231,16 +220,6 @@ Ram_dataspace_capability Ram_session_component::alloc(size_t ds_size, Cache_attr
 	/* keep track of the used quota for actual payload */
 	_payload += ds_size;
 
-	if(strcmp(_label, "")!=0) {
-		_trace_sources.set_used(_payload, _label);
-	} else {
-		//PDBG("empty label quota:%d used%d", _quota_limit, _payload);
-		//_trace_sources.set_quota(_quota_limit, "init");
-	}
-	if(strcmp(_label, "i")!=0) {
-		//PDBG("init changed");
-	}
-
 	return static_cap_cast<Ram_dataspace>(result);
 }
 
@@ -289,19 +268,15 @@ Ram_session_component::Ram_session_component(Rpc_entrypoint  *ds_ep,
                                              Range_allocator *ram_alloc,
                                              Allocator       *md_alloc,
                                              const char      *args,
-					     Trace::Source_registry &trace_sources,
                                              size_t           quota_limit)
 :
 	_ds_ep(ds_ep), _ram_session_ep(ram_session_ep), _ram_alloc(ram_alloc),
 	_quota_limit(quota_limit), _payload(0),
 	_md_alloc(md_alloc, Arg_string::find_arg(args, "ram_quota").ulong_value(0)),
 	_ds_slab(&_md_alloc), _ref_account(0),
-	_phys_start(Arg_string::find_arg(args, "phys_start").ulong_value(0)),
-	_trace_sources(trace_sources)
+	_phys_start(Arg_string::find_arg(args, "phys_start").ulong_value(0))
 {
 	Arg_string::find_arg(args, "label").string(_label, sizeof(_label), "");
-
-	//PDBG("%s", _label);
 
 	size_t phys_size = Arg_string::find_arg(args, "phys_size").ulong_value(0);
 	/* sanitize overflow and interpret phys_size==0 as maximum phys address */
@@ -309,12 +284,6 @@ Ram_session_component::Ram_session_component(Rpc_entrypoint  *ds_ep,
 		_phys_end = ~0UL;
 	else
 		_phys_end = _phys_start + phys_size - 1;
-}
-
-void Ram_session_component::set_label(char *label)
-{
-	label="init\0";
-	strncpy(_label, label, 64);
 }
 
 

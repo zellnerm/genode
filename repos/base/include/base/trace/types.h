@@ -32,8 +32,7 @@ namespace Genode { namespace Trace {
 	struct Policy_id;
 	struct Subject_id;
 	struct Execution_time;
-	struct CPU_info;
-	struct RAM_info;
+	struct Subject_info;
 } }
 
 
@@ -82,7 +81,7 @@ struct Genode::Trace::Execution_time
 /**
  * Subject information
  */
-class Genode::Trace::CPU_info
+class Genode::Trace::Subject_info
 {
 	public:
 
@@ -109,23 +108,20 @@ class Genode::Trace::CPU_info
 		Policy_id          _policy_id;
 		Execution_time     _execution_time;
 		Affinity::Location _affinity;
-		unsigned	   _prio;
 
 	public:
 
-		CPU_info() : _state(INVALID) { }
+		Subject_info() : _state(INVALID) { }
 
-		CPU_info(Session_label const &session_label,
+		Subject_info(Session_label const &session_label,
 		             Thread_name   const &thread_name,
 		             State state, Policy_id policy_id,
 		             Execution_time execution_time,
-		             Affinity::Location affinity,
-			     unsigned prio
-				)
+		             Affinity::Location affinity)
 		:
 			_session_label(session_label), _thread_name(thread_name),
 			_state(state), _policy_id(policy_id),
-			_execution_time(execution_time), _affinity(affinity), _prio(prio)
+			_execution_time(execution_time), _affinity(affinity)
 		{ }
 
 		Session_label const &session_label()  const { return _session_label; }
@@ -134,36 +130,6 @@ class Genode::Trace::CPU_info
 		Policy_id            policy_id()      const { return _policy_id; }
 		Execution_time       execution_time() const { return _execution_time; }
 		Affinity::Location   affinity()       const { return _affinity; }
-		unsigned	     prio()	      const { return _prio; }
-};
-
-class Genode::Trace::RAM_info
-{
-	private:
-
-		Session_label      _session_label;
-		Thread_name        _thread_name;
-		size_t		   _ram_quota;
-		size_t		   _ram_used;
-
-	public:
-
-		RAM_info() {}
-
-		RAM_info(Session_label const &session_label,
-		             Thread_name   const &thread_name,
-			     size_t ram_quota,
-			     size_t ram_used
-				)
-		:
-			_session_label(session_label), _thread_name(thread_name),
-			_ram_quota(ram_quota), _ram_used(ram_used)
-		{ }
-
-		Session_label const &session_label()  const { return _session_label; }
-		Thread_name   const &thread_name()    const { return _thread_name; }
-		size_t		     ram_quota()      const { return _ram_quota; }
-		size_t		     ram_used()	      const { return _ram_used; }
 };
 
 #endif /* _INCLUDE__BASE__TRACE__TYPES_H_ */

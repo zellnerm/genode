@@ -20,14 +20,10 @@
 #include <base/rpc_server.h>
 #include <base/allocator_guard.h>
 #include <base/synced_allocator.h>
-#include <util/string.h>
-#include <util/arg_string.h>
 
 /* core includes */
 #include <dataspace_component.h>
 #include <util.h>
-#include <trace/control_area.h>
-#include <trace/source_registry.h>
 
 namespace Genode {
 
@@ -56,8 +52,6 @@ namespace Genode {
 			Ram_session_component  *_ref_account;  /* reference ram session       */
 			addr_t                  _phys_start;
 			addr_t                  _phys_end;
-
-			Trace::Source_registry &_trace_sources;
 
 			enum { MAX_LABEL_LEN = 64 };
 			char _label[MAX_LABEL_LEN];
@@ -138,7 +132,6 @@ namespace Genode {
 			                      Range_allocator *ram_alloc,
 			                      Allocator       *md_alloc,
 			                      const char      *args,
-					      Trace::Source_registry &trace_sources,
 			                      size_t           quota_limit = 0);
 
 			/**
@@ -175,7 +168,6 @@ namespace Genode {
 			int transfer_quota(Ram_session_capability, size_t);
 			size_t quota() { return _quota_limit; }
 			size_t used()  { return _payload; }
-			void set_label(char *label);
 	};
 }
 

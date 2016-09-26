@@ -73,8 +73,7 @@ namespace Genode {
 				Root_component<Cpu_session_component>(session_ep, md_alloc),
 				_thread_ep(thread_ep), _pager_ep(pager_ep),
 				_md_alloc(md_alloc), _trace_sources(trace_sources)
-			{ 			
-			}
+			{ }
 	};
 }
 

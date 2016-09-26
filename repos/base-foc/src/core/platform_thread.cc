@@ -219,11 +219,8 @@ Affinity::Location Platform_thread::affinity() const
 }
 
 
-void Platform_thread::_create_thread(const char *name)
+void Platform_thread::_create_thread()
 {
-	//PDBG("name: %s\n", name);
-	//PDBG("ID: %d\n", _thread.local.dst());
-
 	l4_msgtag_t tag = l4_factory_create_thread(L4_BASE_FACTORY_CAP,
 	                                           _thread.local.dst());
 	if (l4_msgtag_has_error(tag))
@@ -269,28 +266,6 @@ Weak_ptr<Address_space> Platform_thread::address_space()
 }
 
 
-unsigned long long Platform_thread::execution_time() const
-{
-	unsigned long long time = 0;
-
-	if (_utcb) {
-		l4_thread_stats_time(_thread.local.dst());
-		time = *(l4_kernel_clock_t*)&l4_utcb_mr()->mr[0];
-	}
-
-	return time;
-}
-
-unsigned Platform_thread::prio() const
-{
-	return _prio;
-}
-
-unsigned Platform_thread::id() const
-{ 	
-	return _thread.local.dst();
-}
-
 Platform_thread::Platform_thread(const char *name, unsigned prio, addr_t)
 : _state(DEAD),
   _core_thread(false),
@@ -302,7 +277,7 @@ Platform_thread::Platform_thread(const char *name, unsigned prio, addr_t)
   _prio(Cpu_session::scale_priority(DEFAULT_PRIORITY, prio))
 {
 	((Core_cap_index*)_thread.local.idx())->pt(this);
-	_create_thread(name);
+	_create_thread();
 	_finalize_construction(name);
 }
 
@@ -334,7 +309,7 @@ Platform_thread::Platform_thread(const char *name)
   _prio(Cpu_session::scale_priority(DEFAULT_PRIORITY, 0))
 {
 	((Core_cap_index*)_thread.local.idx())->pt(this);
-	_create_thread(name);
+	_create_thread();
 	_finalize_construction(name);
 }
 

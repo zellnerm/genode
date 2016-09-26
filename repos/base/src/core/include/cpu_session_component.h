@@ -104,9 +104,7 @@ namespace Genode {
 			{
 				return { _session_label, _name,
 				         _platform_thread.execution_time(),
-				         _platform_thread.affinity()
-					 _platform_thread.prio(),
-					 _platform_thread.id() };
+				         _platform_thread.affinity() };
 			}
 
 

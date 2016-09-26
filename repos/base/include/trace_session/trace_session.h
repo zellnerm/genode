@@ -82,9 +82,7 @@ struct Genode::Trace::Session : Genode::Session
 	 *
 	 * \throw Nonexistent_subject
 	 */
-	virtual CPU_info cpu_info(Subject_id) = 0;
-
-	virtual RAM_info ram_info(Subject_id) = 0;
+	virtual Subject_info subject_info(Subject_id) = 0;
 
 	/**
 	 * Obtain trace buffer of given subject
@@ -135,9 +133,7 @@ struct Genode::Trace::Session : Genode::Session
 	                 Subject_id);
 	GENODE_RPC_THROW(Rpc_subjects, size_t, subjects,
 	                 GENODE_TYPE_LIST(Out_of_metadata));
-	GENODE_RPC_THROW(Rpc_cpu_info, CPU_info, cpu_info,
-	                 GENODE_TYPE_LIST(Nonexistent_subject), Subject_id);
-	GENODE_RPC_THROW(Rpc_ram_info, RAM_info, ram_info,
+	GENODE_RPC_THROW(Rpc_subject_info, Subject_info, subject_info,
 	                 GENODE_TYPE_LIST(Nonexistent_subject), Subject_id);
 	GENODE_RPC_THROW(Rpc_buffer, Dataspace_capability, buffer,
 	                 GENODE_TYPE_LIST(Nonexistent_subject, Subject_not_traced),
@@ -154,12 +150,11 @@ struct Genode::Trace::Session : Genode::Session
 	        Meta::Type_tuple<Rpc_pause,
 	        Meta::Type_tuple<Rpc_resume,
 	        Meta::Type_tuple<Rpc_subjects,
-	        Meta::Type_tuple<Rpc_cpu_info,
-		Meta::Type_tuple<Rpc_ram_info,
+	        Meta::Type_tuple<Rpc_subject_info,
 	        Meta::Type_tuple<Rpc_buffer,
 	        Meta::Type_tuple<Rpc_free,
 	                         Meta::Empty>
-	        > > > > > > > > > > > > Rpc_functions;
+	        > > > > > > > > > > > Rpc_functions;
 };
 
 #endif /* _INCLUDE__TRACE_SESSION__TRACE_SESSION_H_ */

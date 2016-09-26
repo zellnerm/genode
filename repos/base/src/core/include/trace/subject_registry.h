@@ -139,21 +139,21 @@ class Genode::Trace::Subject
 		Ram_dataspace       _policy;
 		Policy_id           _policy_id;
 
-		CPU_info::State _state()
+		Subject_info::State _state()
 		{
 			Locked_ptr<Source> source(_source);
 
 			/* source vanished */
 			if (!source.is_valid())
-				return CPU_info::DEAD;
+				return Subject_info::DEAD;
 
 			if (source->enabled())
-				return source->is_owned_by(this) ? CPU_info::TRACED
-				                                 : CPU_info::FOREIGN;
+				return source->is_owned_by(this) ? Subject_info::TRACED
+				                                 : Subject_info::FOREIGN;
 			if (source->error())
-				return CPU_info::ERROR;
+				return Subject_info::ERROR;
 
-			return CPU_info::UNTRACED;
+			return Subject_info::UNTRACED;
 		}
 
 	public:
@@ -234,11 +234,10 @@ class Genode::Trace::Subject
 			source->enable();
 		}
 
-		CPU_info info_cpu()
+		Subject_info info()
 		{
 			Execution_time execution_time;
 			Affinity::Location affinity;
-			unsigned prio;
 
 			{
 				Locked_ptr<Source> source(_source);
@@ -247,33 +246,11 @@ class Genode::Trace::Subject
 					Trace::Source::Info const info = source->info();
 					execution_time = info.execution_time;
 					affinity       = info.affinity;
-					prio=info.prio;
 				}
 			}
-			CPU_info info= CPU_info(_label, _name, _state(), _policy_id,
-			                    execution_time, affinity, prio
-						);
-			return info;
-		}
 
-		RAM_info info_ram()
-		{
-			size_t ram_quota;
-			size_t ram_used;
-
-			{
-				Locked_ptr<Source> source(_source);
-
-				if (source.is_valid()) {
-					Trace::Source::Info const info = source->info();
-					ram_quota= info.ram_quota;
-					ram_used= info.ram_used;
-				}
-			}
-			RAM_info info= RAM_info(_label, _name,
-			                    ram_quota, ram_used
-						);
-			return info;
+			return Subject_info(_label, _name, _state(), _policy_id,
+			                    execution_time, affinity);
 		}
 
 		Dataspace_capability buffer() const { return _buffer.dataspace(); }
