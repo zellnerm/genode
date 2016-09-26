@@ -31,6 +31,7 @@ namespace Genode {
 	class Platform_pd;
 	class Platform_thread
 	{
+
 		private:
 
 			enum State { DEAD, RUNNING };
@@ -54,7 +55,8 @@ namespace Genode {
 
 			Affinity::Location _location;
 
-			void _create_thread(void);
+
+			void _create_thread(const char *name);
 			void _finalize_construction(const char *name);
 			bool _in_syscall(Fiasco::l4_umword_t flags);
 
@@ -175,8 +177,11 @@ namespace Genode {
 			/**
 			 * Return execution time consumed by the thread
 			 */
-			unsigned long long execution_time() const { return 0; }
+			unsigned long long execution_time() const;
 
+			unsigned prio() const;
+
+			unsigned id() const;
 
 			/*******************************
 			 ** Fiasco-specific Accessors **
