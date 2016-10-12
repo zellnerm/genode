@@ -26,10 +26,10 @@ toolchain:
 ports: foc libports
 
 foc:
-	$(MAKE) -C repos/base-foc prepare
+	$(MAKE) -j -C repos/base-foc prepare
 
 libports:
-	$(MAKE) -C repos/libports prepare
+	$(MAKE) -j -C repos/libports prepare
 #
 # ================================================================
 
@@ -44,7 +44,7 @@ genode_build_dir:
 	printf 'REPOSITORIES += $$(GENODE_DIR)/repos/taskmanager\n' >> $(BUILD_CONF)
 
 taskmanager:
-	$(MAKE) -j10 -C $(GENODE_BUILD_DIR) taskmanager
+	$(MAKE) -j -C $(GENODE_BUILD_DIR) taskmanager
 
 # Delete build directory for all target systems. In some cases, subfolders in the contrib directory might be corrupted. Remove manually and re-prepare if necessary.
 clean:
@@ -56,7 +56,7 @@ clean:
 # ================================================================
 # Run Genode with an active dom0 server.
 run:
-	$(MAKE) -j10 -C $(GENODE_BUILD_DIR) run/taskmanager
+	$(MAKE) -j -C $(GENODE_BUILD_DIR) run/taskmanager
 #
 # ================================================================
 
