@@ -23,7 +23,7 @@ The Makefile will need additional adjustments for other kernels than Fiasco.OC.
 ### Required packages
 The following packages are required for building the Genode toolchain:
 
-`sudo apt-get install libncurses5-dev texinfo autogen autoconf2.64 g++ libexpat1-dev flex bison gperf`
+`sudo apt-get install libncurses5-dev texinfo autogen autoconf2.64 g++ libexpat1-dev flex bison gperf cmake libXml2-dev libtool zlib1g-dev libglib2.0-dev`
 
 For building Genode:
 
@@ -32,6 +32,11 @@ For building Genode:
 For running Genode in QEMU:
 
 `sudo apt-get install libxml2-utils syslinux`
+
+Inside QEMU run, if you are told to:
+
+`git submodule update --init pixman`
+`git submodule update --init dtc`
 
 For some additional ports you may need:
 
@@ -42,8 +47,7 @@ Custom repos:
 
 | Folder                              | Description                                      |
 | ----------------------------------- | ------------------------------------------------ |
-| `repos/taskmanager/`                       	| central network module: server and task manager  |
-| `repos/taskmanager/run/`                  	| run file configuration for dom0                  |
+| `repos/taskmanager/run/`                  	| run file configuration for task manager                  |
 | `repos/taskmanager/src/taskmanager/re/`       | taskmanager                                      |
 | `repos/taskmanager/src/idle/` 		| idle process to show system load                 |
 
