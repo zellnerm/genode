@@ -43,8 +43,8 @@ genode_build_dir:
 	printf 'REPOSITORIES += $$(GENODE_DIR)/repos/libports\n' >> $(BUILD_CONF)
 	printf 'REPOSITORIES += $$(GENODE_DIR)/repos/taskmanager\n' >> $(BUILD_CONF)
 
-task-manager:
-	$(MAKE) -j10 -C $(GENODE_BUILD_DIR) task-manager
+taskmanager:
+	$(MAKE) -j10 -C $(GENODE_BUILD_DIR) taskmanager
 
 # Delete build directory for all target systems. In some cases, subfolders in the contrib directory might be corrupted. Remove manually and re-prepare if necessary.
 clean:
