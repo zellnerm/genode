@@ -29,7 +29,7 @@ foc:
 	$(MAKE) -j -C repos/base-foc prepare
 
 libports:
-	$(MAKE) -j -C repos/libports prepare
+	$(MAKE) -C repos/libports prepare
 #
 # ================================================================
 
