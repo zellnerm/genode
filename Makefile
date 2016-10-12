@@ -12,6 +12,15 @@ BUILD_CONF           = $(GENODE_BUILD_DIR)/etc/build.conf
 all: toolchain ports platform
 
 # ================================================================
+# Requiered packages for relaunched systems
+packages:
+	sudo apt-get update
+	sudo apt-get install libncurses5-dev texinfo autogen autoconf2.64 g++ libexpat1-dev flex bison gperf cmake libXml2-dev libtool zlib1g-dev libglib2.0-dev
+	sudo apt-get install make pkg-config gawk subversion expect git
+	sudo apt-get install libxml2-utils syslinux
+	sudo apt-get install xsltproc yasm iasl lynx
+
+# ================================================================
 # Genode toolchain. Only needs to be done once per target (x86/arm).
 toolchain:
 	mkdir -p $(TOOLCHAIN_BUILD_DIR)
