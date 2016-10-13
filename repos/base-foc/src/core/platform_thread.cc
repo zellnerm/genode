@@ -266,6 +266,28 @@ Weak_ptr<Address_space> Platform_thread::address_space()
 }
 
 
+unsigned long long Platform_thread::execution_time() const
+{
+	unsigned long long time = 0;
+
+	if (_utcb) {
+		l4_thread_stats_time(_thread.local.dst());
+		time = *(l4_kernel_clock_t*)&l4_utcb_mr()->mr[0];
+	}
+
+	return time;
+}
+
+unsigned Platform_thread::prio() const
+{
+	return _prio;
+}
+
+unsigned Platform_thread::id() const
+{ 	
+	return _thread.local.dst();
+}
+
 Platform_thread::Platform_thread(const char *name, unsigned prio, addr_t)
 : _state(DEAD),
   _core_thread(false),
