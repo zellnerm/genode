@@ -146,8 +146,6 @@ class Context_area_ram_session : public Ram_session
 		size_t quota() { return 0; }
 
 		size_t used() { return 0; }
-
-		void set_label(char *label) {  }
 };
 
 

@@ -26,7 +26,6 @@ namespace Genode {
 
 			Range_allocator *_ram_alloc;
 			Rpc_entrypoint  *_ds_ep;
-			Trace::Source_registry &_trace_sources;
 
 		protected:
 
@@ -34,7 +33,7 @@ namespace Genode {
 			{
 				return new (md_alloc())
 					Ram_session_component(_ds_ep, ep(), _ram_alloc,
-					                      md_alloc(), args, _trace_sources);
+					                      md_alloc(), args);
 			}
 
 			void _upgrade_session(Ram_session_component *ram, const char *args)
@@ -56,13 +55,10 @@ namespace Genode {
 			Ram_root(Rpc_entrypoint  *session_ep,
 			         Rpc_entrypoint  *ds_ep,
 			         Range_allocator *ram_alloc,
-			         Allocator       *md_alloc,
-			         Trace::Source_registry &trace_sources)
+			         Allocator       *md_alloc)
 			:
 				Root_component<Ram_session_component>(session_ep, md_alloc),
-				_ram_alloc(ram_alloc), _ds_ep(ds_ep), _trace_sources(trace_sources) 
-				{			
-				}
+				_ram_alloc(ram_alloc), _ds_ep(ds_ep) { }
 	};
 }
 
