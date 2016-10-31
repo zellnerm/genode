@@ -30,7 +30,7 @@ static String read_string_attribute(Genode::Xml_node const &node,
 	try {
 		char buf[String::capacity()];
 		node.attribute(attr).value(buf, sizeof(buf));
-		return String(buf);
+		return String(Genode::Cstring(buf));
 	}
 	catch (...) {
 		return default_value; }
@@ -50,7 +50,7 @@ struct Shape
 
 struct Shape_report : Vbox_pointer::Shape_report
 {
-	Genode::Reporter reporter { "shape", sizeof(Vbox_pointer::Shape_report) };
+	Genode::Reporter reporter { "shape", "shape", sizeof(Vbox_pointer::Shape_report) };
 
 	Shape_report()
 	:

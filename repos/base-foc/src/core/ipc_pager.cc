@@ -12,12 +12,17 @@
  */
 
 /* Genode includes */
-#include <base/printf.h>
+#include <base/log.h>
 #include <base/thread.h>
 
-/* Core includes */
+/* core includes */
 #include <ipc_pager.h>
 
+/* base-internal includes */
+#include <base/internal/native_utcb.h>
+#include <base/internal/cap_map.h>
+
+/* Fiasco includes */
 namespace Fiasco {
 #include <l4/sys/ipc.h>
 }
@@ -77,7 +82,7 @@ void Ipc_pager::wait_for_fault()
 			_parse(label);
 			return;
 		}
-		PERR("Ipc error %d in pagefault from %lx", err, label & ~0x3);
+		error("Ipc error ", err, " in pagefault from ", Hex(label & ~0x3));
 	} while (true);
 }
 
@@ -106,11 +111,11 @@ void Ipc_pager::reply_and_wait_for_fault()
 	}
 	l4_utcb_mr()->mr[1] = _reply_mapping.fpage().raw;
 
-	_tag = l4_ipc_send_and_wait(_last, l4_utcb(), snd_tag,
+	_tag = l4_ipc_send_and_wait(_last.kcap, l4_utcb(), snd_tag,
 	                            &label, L4_IPC_SEND_TIMEOUT_0);
 	int err = l4_ipc_error(_tag, l4_utcb());
 	if (err) {
-		PERR("Ipc error %d in pagefault from %lx", err, label & ~0x3);
+		error("Ipc error ", err, " in pagefault from ", Hex(label & ~0x3));
 		wait_for_fault();
 	} else
 		_parse(label);
@@ -119,7 +124,7 @@ void Ipc_pager::reply_and_wait_for_fault()
 
 void Ipc_pager::acknowledge_wakeup()
 {
-	l4_cap_idx_t dst = Fiasco::Capability::valid(_last) ? _last : L4_SYSF_REPLY;
+	l4_cap_idx_t dst = Fiasco::Capability::valid(_last.kcap) ? _last.kcap : L4_SYSF_REPLY;
 
 	/* answer wakeup call from one of core's region-manager sessions */
 	l4_ipc_send(dst, l4_utcb(), l4_msgtag(0, 0, 0, 0), L4_IPC_SEND_TIMEOUT_0);
@@ -129,12 +134,14 @@ void Ipc_pager::acknowledge_wakeup()
 void Ipc_pager::acknowledge_exception()
 {
 	memcpy(l4_utcb_exc(), &_regs, sizeof(l4_exc_regs_t));
-	l4_cap_idx_t dst = Fiasco::Capability::valid(_last) ? _last : L4_SYSF_REPLY;
+	l4_cap_idx_t dst = Fiasco::Capability::valid(_last.kcap) ? _last.kcap : L4_SYSF_REPLY;
 	l4_ipc_send(dst, l4_utcb(), l4_msgtag(0, L4_UTCB_EXCEPTION_REGS_SIZE, 0, 0), L4_IPC_SEND_TIMEOUT_0);
 }
 
 
 Ipc_pager::Ipc_pager()
-: Native_capability((Cap_index*)Fiasco::l4_utcb_tcr()->user[Fiasco::UTCB_TCR_BADGE]),
-  _badge(0) { }
+:
+	Native_capability(*(Cap_index*)Fiasco::l4_utcb_tcr()->user[Fiasco::UTCB_TCR_BADGE]),
+	_badge(0)
+{ }
 

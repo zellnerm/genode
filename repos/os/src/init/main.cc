@@ -36,7 +36,7 @@ inline long read_prio_levels()
 	catch (...) { }
 
 	if (prio_levels && (prio_levels != (1 << log2(prio_levels)))) {
-		printf("Warning: Priolevels is not power of two, priorities are disabled\n");
+		warning("prio levels is not power of two, priorities are disabled");
 		return 0;
 	}
 	return prio_levels;
@@ -70,7 +70,7 @@ inline void determine_parent_services(Genode::Service_registry *services)
 	using namespace Genode;
 
 	if (Init::config_verbose)
-		printf("parent provides\n");
+		log("parent provides");
 
 	Xml_node node = config()->xml_node().sub_node("parent-provides").sub_node("service");
 	for (; ; node = node.next("service")) {
@@ -81,9 +81,9 @@ inline void determine_parent_services(Genode::Service_registry *services)
 		Parent_service *s = new (env()->heap()) Parent_service(service_name);
 		services->insert(s);
 		if (Init::config_verbose)
-			printf("  service \"%s\"\n", service_name);
+			log("  service \"", Cstring(service_name), "\"");
 
-		if (node.is_last("service")) break;
+		if (node.last("service")) break;
 	}
 }
 
@@ -190,8 +190,8 @@ class Init::Child_registry : public Name_registry, Child_list
 		 */
 		void insert_alias(Alias *alias)
 		{
-			if (!is_unique(alias->name.string())) {
-				PERR("Alias name %s is not unique", alias->name.string());
+			if (!unique(alias->name.string())) {
+				error("alias name ", alias->name, " is not unique");
 				throw Alias_name_is_not_unique();
 			}
 			_aliases.insert(alias);
@@ -231,12 +231,19 @@ class Init::Child_registry : public Name_registry, Child_list
 			return _aliases.first() ? _aliases.first() : 0;
 		}
 
+		void revoke_server(Genode::Server const *server)
+		{
+			Genode::List_element<Child> *curr = first();
+			for (; curr; curr = curr->next())
+				curr->object()->_child.revoke_server(server);
+		}
+
 
 		/*****************************
 		 ** Name-registry interface **
 		 *****************************/
 
-		bool is_unique(const char *name) const
+		bool unique(const char *name) const
 		{
 			/* check for name clash with an existing child */
 			Genode::List_element<Child> const *curr = first();
@@ -279,10 +286,11 @@ int main(int, char **)
 	using namespace Init;
 	using namespace Genode;
 
-	/* look for dynamic linker */
+	/* obtain dynamic linker */
+	Dataspace_capability ldso_ds;
 	try {
 		static Rom_connection rom("ld.lib.so");
-		Process::dynamic_linker(rom.dataspace());
+		ldso_ds = rom.dataspace();
 	} catch (...) { }
 
 	static Service_registry parent_services;
@@ -302,10 +310,8 @@ int main(int, char **)
 
 	for (;;) {
 
-		try {
-			config_verbose =
-				config()->xml_node().attribute("verbose").has_value("yes"); }
-		catch (...) { }
+		config_verbose =
+			config()->xml_node().attribute_value("verbose", false);
 
 		try { determine_parent_services(&parent_services); }
 		catch (...) { }
@@ -324,9 +330,9 @@ int main(int, char **)
 				children.insert_alias(new (env()->heap()) Alias(alias_node));
 			}
 			catch (Alias::Name_is_missing) {
-				PWRN("Missing 'name' attribute in '<alias>' entry\n"); }
+				warning("missing 'name' attribute in '<alias>' entry"); }
 			catch (Alias::Child_is_missing) {
-				PWRN("Missing 'child' attribute in '<alias>' entry\n"); }
+				warning("missing 'child' attribute in '<alias>' entry"); }
 
 		});
 
@@ -337,9 +343,10 @@ int main(int, char **)
 				try {
 					children.insert(new (env()->heap())
 					                Init::Child(start_node, default_route_node,
-					                            &children, read_prio_levels(),
+					                            children, read_prio_levels(),
 					                            read_affinity_space(),
-					                            &parent_services, &child_services, &cap));
+					                            parent_services, child_services, cap,
+					                            ldso_ds));
 				}
 				catch (Rom_connection::Rom_connection_failed) {
 					/*
@@ -353,9 +360,9 @@ int main(int, char **)
 			children.start();
 		}
 		catch (Xml_node::Nonexistent_sub_node) {
-			PERR("No children to start"); }
+			error("no children to start"); }
 		catch (Xml_node::Invalid_syntax) {
-			PERR("No children to start"); }
+			error("no children to start"); }
 		catch (Init::Child::Child_name_is_not_unique) { }
 		catch (Init::Child_registry::Alias_name_is_not_unique) { }
 
@@ -372,14 +379,26 @@ int main(int, char **)
 			if (signal.context() == &sig_ctx_config)
 				break;
 
-			PWRN("unexpected signal received - drop it");
+			warning("unexpected signal received - drop it");
 		}
 
 		/* kill all currently running children */
 		while (children.any()) {
 			Init::Child *child = children.any();
 			children.remove(child);
+			Genode::Server const *server = child->server();
 			destroy(env()->heap(), child);
+
+			/*
+			 * The killed child may have provided services to other children.
+			 * Since the server is dead by now, we cannot close its sessions
+			 * in the cooperative way. Instead, we need to instruct each
+			 * other child to forget about session associated with the dead
+			 * server. Note that the 'child' pointer points a a no-more
+			 * existing object. It is only used to identify the corresponding
+			 * session. It must never by de-referenced!
+			 */
+			children.revoke_server(server);
 		}
 
 		/* remove all known aliases */

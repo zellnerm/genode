@@ -1,6 +1,7 @@
 /*
  * \brief  Raspberry Pi implementation of the Block::Driver interface
  * \author Norman Feske
+ * \author Timo Wischer
  * \date   2014-09-21
  */
 
@@ -16,9 +17,10 @@
 
 #include <util/mmio.h>
 #include <os/attached_io_mem_dataspace.h>
-#include <base/printf.h>
+#include <base/log.h>
 #include <timer_session/connection.h>
 #include <block/component.h>
+#include <drivers/board_base.h>
 
 /* local includes */
 #include <sdhci.h>
@@ -42,15 +44,8 @@ class Block::Sdhci_driver : public Block::Driver
 
 		} _delayer;
 
-		/* memory map */
-		enum {
-			SDHCI_BASE = 0x20300000,
-			SDHCI_SIZE = 0x100,
-			SDHCI_IRQ  = 62,
-		};
-
 		/* display sub system registers */
-		Attached_io_mem_dataspace _sdhci_mmio { SDHCI_BASE, SDHCI_SIZE };
+		Attached_io_mem_dataspace _sdhci_mmio { Board_base::SDHCI_BASE, Board_base::SDHCI_SIZE };
 
 		/* host-controller instance */
 		Sdhci_controller _controller;
@@ -59,16 +54,16 @@ class Block::Sdhci_driver : public Block::Driver
 
 	public:
 
-		Sdhci_driver(bool use_dma)
+		Sdhci_driver(bool use_dma, const bool set_voltage = false)
 		:
 			_controller((addr_t)_sdhci_mmio.local_addr<void>(),
-			            _delayer, SDHCI_IRQ, use_dma),
+						_delayer, Board_base::SDHCI_IRQ, use_dma, set_voltage),
 			_use_dma(use_dma)
 		{
 			Sd_card::Card_info const card_info = _controller.card_info();
 
-			PLOG("SD card detected");
-			PLOG("capacity: %zd MiB", card_info.capacity_mb());
+			Genode::log("SD card detected");
+			Genode::log("capacity: ", card_info.capacity_mb(), " MiB");
 		}
 
 
@@ -76,7 +71,7 @@ class Block::Sdhci_driver : public Block::Driver
 		 ** Block::Driver interface **
 		 *****************************/
 
-		Genode::size_t block_size() { return 512; }
+		Genode::size_t block_size() { return Sdhci_controller::Block_size; }
 
 		virtual Block::sector_t block_count()
 		{

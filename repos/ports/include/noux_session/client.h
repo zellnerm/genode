@@ -17,7 +17,7 @@
 #include <noux_session/noux_session.h>
 #include <noux_session/capability.h>
 #include <base/rpc_client.h>
-#include <base/printf.h>
+#include <base/log.h>
 
 namespace Noux {
 
@@ -39,7 +39,7 @@ namespace Noux {
 				bool result = call<Rpc_syscall>(sc);
 
 				if ((result == false) && verbose)
-					PERR("syscall %s failed", syscall_name(sc));
+					error("syscall ", syscall_name(sc), " failed");
 
 				return result;
 			}
@@ -49,9 +49,9 @@ namespace Noux {
 				return call<Rpc_next_open_fd>(start_fd);
 			}
 
-			Rm_session_capability lookup_rm_session(addr_t const addr)
+			Capability<Region_map> lookup_region_map(addr_t const addr)
 			{
-				return call<Rpc_lookup_rm_session>(addr);
+				return call<Rpc_lookup_region_map>(addr);
 			}
 	};
 }

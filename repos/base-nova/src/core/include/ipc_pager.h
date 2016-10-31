@@ -18,8 +18,6 @@
 #include <base/cache.h>
 #include <base/ipc.h>
 #include <base/stdint.h>
-#include <base/native_types.h>
-#include <base/printf.h>
 
 /* NOVA includes */
 #include <nova/syscalls.h>
@@ -126,12 +124,12 @@ namespace Genode {
 			/**
 			 * Return true if fault was a write fault
 			 */
-			bool is_write_fault() const { return _fault_type & ERR_W; }
+			bool write_fault() const { return _fault_type & ERR_W; }
 
 			/**
 			 * Return true if last fault was an exception
 			 */
-			bool is_exception() const
+			bool exception() const
 			{
 				/*
 				 * Reflection of exceptions is not supported on this platform.

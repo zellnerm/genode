@@ -11,12 +11,15 @@
  * under the terms of the GNU General Public License version 2.
  */
 
-#include <base/env.h>
-#include <base/printf.h>
-#include <os/config.h>
+/* Genode includes */
+#include <base/component.h>
+#include <base/log.h>
+#include <base/attached_rom_dataspace.h>
 #include <util/list.h>
 #include <util/string.h>
+#include <base/thread.h>
 
+/* local includes */
 #include <dynamic.h>
 #include <init.h>
 
@@ -32,15 +35,9 @@ namespace Linker {
 
 };
 
-/**
- * Genode args to the 'main' function
- */
-extern char **genode_argv;
-extern int    genode_argc;
-extern char **genode_envp;
-
 static    Binary *binary = 0;
 bool      Linker::bind_now = false;
+bool      Linker::verbose  = false;
 Link_map *Link_map::first;
 
 /**
@@ -64,7 +61,8 @@ struct Linker::Elf_object : Object, Genode::Fifo<Elf_object>::Element
 	unsigned flags     = 0;
 	bool     relocated = false;
 
-	Elf_object(Dependency const *dep) : dyn(dep)
+	Elf_object(Dependency const *dep, Elf::Addr reloc_base)
+	: Object(reloc_base), dyn(dep)
 	{ }
 
 	Elf_object(char const *path, Dependency const *dep, unsigned flags = 0)
@@ -88,7 +86,7 @@ struct Linker::Elf_object : Object, Genode::Fifo<Elf_object>::Element
 			return;
 
 		if (verbose_loading)
-			PDBG("destroy: %s", name());
+			Genode::log("LD: destroy ELF object: ", name());
 
 		/* remove from link map */
 		Debug::state_change(Debug::DELETE, &map);
@@ -248,7 +246,8 @@ struct Linker::Elf_object : Object, Genode::Fifo<Elf_object>::Element
  */
 struct Linker::Ld : Dependency, Elf_object
 {
-	Ld() : Dependency(this, nullptr), Elf_object(this)
+	Ld()
+	: Dependency(this, nullptr), Elf_object(this, relocation_address())
 	{
 		Genode::strncpy(_name, linker_name(), Object::MAX_PATH);
 	}
@@ -289,13 +288,13 @@ Elf::Addr Ld::jmp_slot(Dependency const *dep, Elf::Size index)
 	Genode::Lock::Guard guard(Elf_object::lock());
 
 	if (verbose_relocation)
-		PDBG("SLOT %p " EFMT, dep->obj, index);
+		Genode::log("LD: SLOT ", dep->obj, " ", Genode::Hex(index));
 
 	try {
 		Reloc_jmpslot slot(dep, dep->obj->dynamic()->pltrel_type, 
 		                   dep->obj->dynamic()->pltrel, index);
 		return slot.target_addr();
-	} catch (...) { PERR("LD: Jump slot relocation failed. FATAL!"); }
+	} catch (...) { Genode::error("LD: jump slot relocation failed. FATAL!"); }
 
 	return 0;
 }
@@ -359,7 +358,7 @@ struct Linker::Binary : Root_object, Elf_object
 		return 0;
 	}
 
-	int call_entry_point()
+	void call_entry_point(Genode::Env &env)
 	{
 		/* call static construtors and register destructors */
 		Func * const ctors_start = (Func *)lookup_symbol("_ctors_start");
@@ -370,11 +369,13 @@ struct Linker::Binary : Root_object, Elf_object
 		Func * const dtors_end   = (Func *)lookup_symbol("_dtors_end");
 		for (Func * dtor = dtors_start; dtor != dtors_end; genode_atexit(*dtor++));
 
-		/* call main function of the program */
-		typedef int (*Main)(int, char **, char **);
-		Main const main = reinterpret_cast<Main>(_file->entry);
+		/* call component entry point */
+		/* XXX the function type for call_component_construct() is a candidate
+		 * for a base-internal header */
+		typedef void (*Entry)(Genode::Env &);
+		Entry const entry = reinterpret_cast<Entry>(_file->entry);
 
-		return main(genode_argc, genode_argv, genode_envp);
+		entry(env);
 	}
 
 	void relocate() override
@@ -404,7 +405,7 @@ Object *Linker::load(char const *path, Dependency *dep, unsigned flags)
 	for (Object *e = Elf_object::obj_list()->head(); e; e = e->next_obj()) {
 
 		if (verbose_loading)
-			PDBG("LOAD: %s == %s", Linker::file(path), e->name());
+			Genode::log("LOAD: ", Linker::file(path), " == ", e->name());
 
 		if (!Genode::strcmp(Linker::file(path), e->name())) {
 			e->load();
@@ -431,7 +432,7 @@ Elf::Sym const *Linker::lookup_symbol(unsigned sym_index, Dependency const *dep,
 	Elf::Sym   const *symbol = e->symbol(sym_index);
 
 	if (!symbol) {
-		PWRN("LD: Unkown symbol index %x", sym_index);
+		Genode::warning("LD: unknown symbol index ", Genode::Hex(sym_index));
 		return 0;
 	}
 
@@ -464,7 +465,9 @@ Elf::Sym const *Linker::lookup_symbol(char const *name, Dependency const *dep,
 		if ((symbol = elf->lookup_symbol(name, hash)) && (symbol->st_value || undef)) {
 
 			if (dep->root && verbose_lookup)
-				PINF("Lookup %s obj_src %s st %p info %x weak: %u", name, elf->name(), symbol, symbol->st_info, symbol->weak());
+				Genode::log("LD: lookup ", name, " obj_src ", elf->name(),
+				            " st ", symbol, " info ", Genode::Hex(symbol->st_info),
+				            " weak: ", symbol->weak());
 
 			if (!undef && symbol->st_shndx == SHN_UNDEF)
 				continue;
@@ -482,11 +485,17 @@ Elf::Sym const *Linker::lookup_symbol(char const *name, Dependency const *dep,
 	}
 
 	/* try searching binary's dependencies */
-	if (!weak_symbol && dep->root && dep != binary->dep.head())
-		return lookup_symbol(name, binary->dep.head(), base, undef, other);
+	if (!weak_symbol && dep->root) {
+		if (binary && dep != binary->dep.head()) {
+			return lookup_symbol(name, binary->dep.head(), base, undef, other);
+		} else {
+			Genode::error("LD: could not lookup symbol \"", name, "\"");
+			throw Not_found();
+		}
+	}
 
 	if (dep->root && verbose_lookup)
-		PDBG("Return %p", weak_symbol);
+		Genode::log("LD: return ", weak_symbol);
 
 	if (!weak_symbol)
 		throw Not_found();
@@ -525,57 +534,57 @@ extern "C" void init_rtld()
 	linker_stack.ref_count++;
 
 	/*
-	 * Create actual linker object with different vtable type  and set PLT to new
+	 * Create actual linker object with different vtable type and set PLT to new
 	 * DAG.
 	 */
 	Ld::linker()->dynamic()->plt_setup();
 }
 
 
-static void dump_loaded()
-{
-	Object *o = Elf_object::obj_list()->head();
-	for(; o; o = o->next_obj()) {
-
-		if (o->is_binary())
-			continue;
-
-		Genode::printf("  " EFMT " .. " EFMT ": %s\n",
-		                o->link_map()->addr, o->link_map()->addr + o->size() - 1,
-		                o->name());
-	}
-}
+Genode::size_t Component::stack_size() { return 16*1024*sizeof(long); }
 
 
-int main()
+struct Failed_to_load_program { };
+
+
+void Component::construct(Genode::Env &env)
 {
 	/* load program headers of linker now */
 	if (!Ld::linker()->file())
 		Ld::linker()->load_phdr();
 
-	/* read configuration */
+	/* read configuration, release ROM afterwards */
 	try {
-		/* bind immediately */
-		bind_now = Genode::config()->xml_node().attribute("ld_bind_now").has_value("yes");
-	} catch (...) { }
+		Genode::Attached_rom_dataspace config(env, "config");
+
+		bind_now = config.xml().attribute_value("ld_bind_now", false);
+		verbose  = config.xml().attribute_value("ld_verbose",  false);
+	} catch (Genode::Rom_connection::Rom_connection_failed) { }
 
 	/* load binary and all dependencies */
 	try {
 		binary = new(Genode::env()->heap()) Binary();
 	} catch (...) {
-			PERR("LD: Failed to load program");
-			return -1;
+		Genode::error("LD: failed to load program");
+		throw Failed_to_load_program();
 	}
 
 	/* print loaded object information */
 	try {
-		if (Genode::config()->xml_node().attribute("ld_verbose").has_value("yes"))
-			dump_loaded();
+		if (verbose) {
+			using namespace Genode;
+			log("  ",   Hex(Thread::stack_area_virtual_base()),
+			    " .. ", Hex(Thread::stack_area_virtual_base() +
+			                Thread::stack_area_virtual_size() - 1),
+			    ": stack area");
+			dump_link_map(Elf_object::obj_list()->head());
+		}
 	} catch (...) {  }
 
 	Link_map::dump();
 
-	/* start binary */
-	return binary->call_entry_point();
-}
+	binary_ready_hook_for_gdb();
 
+	/* start binary */
+	binary->call_entry_point(env);
+}

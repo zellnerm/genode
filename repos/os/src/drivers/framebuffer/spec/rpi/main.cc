@@ -81,7 +81,7 @@ class Framebuffer::Session_component : public Genode::Rpc_object<Framebuffer::Se
 
 		Dataspace_capability dataspace() override
 		{
-			if (_bb_mem.is_constructed())
+			if (_bb_mem.constructed())
 				return _bb_mem->cap();
 			else
 				return _fb_mem.cap();
@@ -102,7 +102,7 @@ class Framebuffer::Session_component : public Genode::Rpc_object<Framebuffer::Se
 
 		void refresh(int x, int y, int w, int h) override
 		{
-			if (_bb_mem.is_constructed())
+			if (_bb_mem.constructed())
 				_refresh_buffered(x, y, w, h);
 		}
 };
@@ -110,11 +110,7 @@ class Framebuffer::Session_component : public Genode::Rpc_object<Framebuffer::Se
 
 static bool config_is_buffered()
 {
-	try {
-		return Genode::config()->xml_node().attribute("buffered").has_value("yes");
-	} catch (...) {
-		return false;
-	}
+	return Genode::config()->xml_node().attribute_value("buffered", false);
 }
 
 
@@ -123,7 +119,7 @@ int main(int, char **)
 	using namespace Framebuffer;
 	using namespace Genode;
 
-	printf("--- fb_drv started ---\n");
+	log("--- fb_drv started ---");
 
 	static Platform::Connection platform;
 

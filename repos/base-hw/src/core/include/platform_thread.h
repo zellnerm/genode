@@ -17,16 +17,18 @@
 
 /* Genode includes */
 #include <ram_session/ram_session.h>
-#include <base/native_types.h>
 #include <base/thread.h>
+
+/* base-internal includes */
+#include <base/internal/native_utcb.h>
 
 /* core includes */
 #include <address_space.h>
 #include <object.h>
 
+/* kernel includes */
 #include <kernel/core_interface.h>
 #include <kernel/thread.h>
-#include <kernel/log.h>
 
 namespace Genode {
 
@@ -95,10 +97,11 @@ namespace Genode {
 			 * \param quota      CPU quota that shall be granted to the thread
 			 * \param label      debugging label
 			 * \param virt_prio  unscaled processor-scheduling priority
-			 * \param utcb       core local pointer to userland thread-context
+			 * \param utcb       core local pointer to userland stack
 			 */
 			Platform_thread(size_t const quota, const char * const label,
-			                unsigned const virt_prio, addr_t const utcb);
+			                unsigned const virt_prio, Affinity::Location,
+			                addr_t const utcb);
 
 			/**
 			 * Destructor
@@ -112,11 +115,11 @@ namespace Genode {
 			 * \param main_thread    wether thread is the first in protection domain
 			 * \param address_space  corresponding Genode address space
 			 *
-			 * \retval  0  succeeded
-			 * \retval -1  failed
+			 * This function has no effect when called more twice for a
+			 * given thread.
 			 */
-			int join_pd(Platform_pd *  const pd, bool const main_thread,
-			            Weak_ptr<Address_space> address_space);
+			void join_pd(Platform_pd *  const pd, bool const main_thread,
+			             Weak_ptr<Address_space> address_space);
 
 			/**
 			 * Run this thread
@@ -130,6 +133,11 @@ namespace Genode {
 			 * Pause this thread
 			 */
 			void pause() { Kernel::pause_thread(kernel_object()); }
+
+			/**
+			 * Enable/disable single stepping
+			 */
+			void single_step(bool) { }
 
 			/**
 			 * Resume this thread
@@ -201,4 +209,3 @@ namespace Genode {
 }
 
 #endif /* _CORE__INCLUDE__PLATFORM_THREAD_H_ */
-

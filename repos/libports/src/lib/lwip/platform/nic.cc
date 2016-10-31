@@ -28,7 +28,7 @@ extern "C" {
 
 /* Genode includes */
 #include <base/thread.h>
-#include <base/printf.h>
+#include <base/log.h>
 #include <nic/packet_allocator.h>
 #include <nic_session/connection.h>
 
@@ -43,7 +43,7 @@ extern "C" {
 /*
  * Thread, that receives packets by the nic-session interface.
  */
-class Nic_receiver_thread : public Genode::Thread<8192>
+class Nic_receiver_thread : public Genode::Thread_deprecated<8192>
 {
 	private:
 
@@ -89,7 +89,7 @@ class Nic_receiver_thread : public Genode::Thread<8192>
 
 		Nic_receiver_thread(Nic::Connection *nic, struct netif *netif)
 		:
-			Genode::Thread<8192>("nic-recv"), _nic(nic), _netif(netif),
+			Genode::Thread_deprecated<8192>("nic-recv"), _nic(nic), _netif(netif),
 			_link_state_dispatcher(_sig_rec, *this, &Nic_receiver_thread::_handle_link_state),
 			_rx_packet_avail_dispatcher(_sig_rec, *this, &Nic_receiver_thread::_handle_rx_packet_avail),
 			_rx_ready_to_ack_dispatcher(_sig_rec, *this, &Nic_receiver_thread::_handle_rx_read_to_ack)
@@ -254,7 +254,7 @@ extern "C" {
 
 		if (netif->input(p, netif) != ERR_OK) {
 			if (verbose)
-				PERR("genode_netif_input: input error");
+				Genode::error("genode_netif_input: input error");
 			pbuf_free(p);
 			p = 0;
 		}

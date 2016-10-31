@@ -35,6 +35,9 @@ struct Usb::Packet_descriptor : Genode::Packet_descriptor
 {
 	enum Type { STRING, CTRL, BULK, IRQ, ALT_SETTING, CONFIG, RELEASE_IF };
 
+	/* use the polling interval stated in the endpoint descriptor */
+	enum { DEFAULT_POLLING_INTERVAL = -1 };
+
 	Type        type;
 	bool        succeded   = false;
 	Completion *completion = nullptr;
@@ -61,7 +64,7 @@ struct Usb::Packet_descriptor : Genode::Packet_descriptor
 		{
 			uint8_t ep;
 			int     actual_size; /* returned */
-			int     timeout;
+			int     polling_interval; /* for interrupt transfers */
 		} transfer;
 
 		struct
@@ -76,7 +79,22 @@ struct Usb::Packet_descriptor : Genode::Packet_descriptor
 		};
 	};
 
-	bool is_read_transfer() { return transfer.ep & ENDPOINT_IN; }
+	enum Error { NO_ERROR, STALL_ERROR, SUBMIT_ERROR };
+
+	Error error = NO_ERROR;
+
+	/**
+	 * Return true if packet is a read transfer
+	 */
+	bool read_transfer() { return transfer.ep & ENDPOINT_IN; }
+
+	/**
+	 * Return true if packet is a read transfer
+	 *
+	 * \noapi
+	 * \deprecated  use 'read_transfer' instead
+	 */
+	bool is_read_transfer() { return read_transfer(); }
 
 	Packet_descriptor(off_t offset = 0, size_t size = 0)
 	: Genode::Packet_descriptor(offset, size) { }
@@ -175,7 +193,12 @@ struct Usb::Session : public Genode::Session
 	/**
 	 * Claim an interface number
 	 */
-	virtual void claim_interface(unsigned interface_num)   = 0;
+	virtual void claim_interface(unsigned interface_num) = 0;
+
+	/**
+	 * Release an interface number
+	 */
+	virtual void release_interface(unsigned interface_num) = 0;
 
 	GENODE_RPC(Rpc_plugged, bool, plugged);
 	GENODE_RPC(Rpc_sigh_state_change, void, sigh_state_change, Signal_context_capability);
@@ -192,7 +215,8 @@ struct Usb::Session : public Genode::Session
 	GENODE_RPC_THROW(Rpc_release_interface, void, release_interface, GENODE_TYPE_LIST(Interface_not_found),
 	                 unsigned);
 	GENODE_RPC_INTERFACE(Rpc_plugged, Rpc_sigh_state_change, Rpc_tx_cap, Rpc_config_descr,
-	                     Rpc_iface_descr, Rpc_ep_descr, Rpc_alt_settings, Rpc_claim_interface);
+	                     Rpc_iface_descr, Rpc_ep_descr, Rpc_alt_settings, Rpc_claim_interface,
+	                     Rpc_release_interface);
 };
 
 #endif /* _INCLUDE__USB_SESSION__USB_SESSION_H_ */

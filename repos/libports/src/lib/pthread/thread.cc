@@ -13,7 +13,7 @@
  */
 
 #include <base/env.h>
-#include <base/printf.h>
+#include <base/log.h>
 #include <base/sleep.h>
 #include <base/thread.h>
 #include <os/timed_semaphore.h>
@@ -42,6 +42,66 @@ struct thread_cleanup : List<thread_cleanup>::Element
 
 static Lock pthread_cleanup_list_lock;
 static List<thread_cleanup> pthread_cleanup_list;
+
+
+/*
+ * We initialize the main-thread pointer in a constructor depending on the
+ * assumption that libpthread is loaded on application startup by ldso. During
+ * this stage only the main thread is executed.
+ */
+static __attribute__((constructor)) Thread * main_thread()
+{
+	static Thread *thread = Thread::myself();
+
+	return thread;
+}
+
+
+void Pthread_registry::insert(pthread_t thread)
+{
+	/* prevent multiple insertions at the same location */
+	static Genode::Lock insert_lock;
+	Genode::Lock::Guard insert_lock_guard(insert_lock);
+
+	for (unsigned int i = 0; i < MAX_NUM_PTHREADS; i++) {
+		if (_array[i] == 0) {
+			_array[i] = thread;
+			return;
+		}
+	}
+
+	Genode::error("pthread registry overflow, pthread_self() might fail");
+}
+
+
+void Pthread_registry::remove(pthread_t thread)
+{
+	for (unsigned int i = 0; i < MAX_NUM_PTHREADS; i++) {
+		if (_array[i] == thread) {
+			_array[i] = 0;
+			return;
+		}
+	}
+
+	Genode::error("could not remove unknown pthread from registry");
+}
+
+
+bool Pthread_registry::contains(pthread_t thread)
+{
+	for (unsigned int i = 0; i < MAX_NUM_PTHREADS; i++)
+		if (_array[i] == thread)
+			return true;
+
+	return false;
+}
+
+
+Pthread_registry &pthread_registry()
+{
+	static Pthread_registry instance;
+	return instance;
+}
 
 
 extern "C" {
@@ -105,54 +165,57 @@ extern "C" {
 	}
 
 
+	/* special non-POSIX function (for example used in libresolv) */
+	int _pthread_main_np(void)
+	{
+		return (Thread::myself() == main_thread());
+	}
+
+
 	pthread_t pthread_self(void)
 	{
-		Thread_base *myself = Thread_base::myself();
+		Thread *myself = Thread::myself();
 
-		pthread_t pthread = dynamic_cast<pthread_t>(myself);
-		if (pthread)
-			return pthread;
+		pthread_t pthread_myself = static_cast<pthread_t>(myself);
 
-		/* either it is the main thread, an alien thread or a bug */
+		if (pthread_registry().contains(pthread_myself))
+			return pthread_myself;
 
-		/* determine name of thread */
-		char name[Thread_base::Context::NAME_LEN];
-		myself->name(name, sizeof(name));
+		/*
+		 * We pass here if the main thread or an alien thread calls
+		 * pthread_self(). So check for aliens (or other bugs) and opt-out
+		 * early.
+		 */
 
-		/* determine if stack is in first context area slot */
-		addr_t stack = reinterpret_cast<addr_t>(&myself);
-		bool is_main = Native_config::context_area_virtual_base() <= stack &&
-		               stack < Native_config::context_area_virtual_base() +
-		               Native_config::context_virtual_size();
+		if (!_pthread_main_np()) {
+			error("pthread_self() called from alien thread named ",
+			      "'", myself->name().string(), "'");
 
-		/* check that stack and name is of main thread */
-		if (is_main && !strcmp(name, "main")) {
-			/* create a pthread object containing copy of main Thread_base */
-			static struct pthread_attr main_thread_attr;
-			static struct pthread *main = nullptr;
-			if (!main) {
-				/*
-				 * The pthread object does not get deleted, because this would
-				 * also delete the 'Thread_base' of the main thread.
-				 */
-				main = new (Genode::env()->heap()) struct pthread(*myself, &main_thread_attr);
-			}
-
-			return main;
+			return nullptr;
 		}
 
-		PERR("pthread_self() called from alien thread named '%s'", name);
+		/*
+		 * We create a pthread object containing a copy of main thread's
+		 * Thread object. Therefore, we ensure the pthread object does not
+		 * get deleted by allocating it in heap via new(). Otherwise, the
+		 * static destruction of the pthread object would also destruct the
+		 * 'Thread' of the main thread.
+		 */
 
-		return nullptr;
+		static struct pthread_attr main_thread_attr;
+		static struct pthread *main = new (Genode::env()->heap())
+		                              struct pthread(*myself, &main_thread_attr);
+
+		return main;
 	}
 
 
 	int pthread_attr_getstack(const pthread_attr_t *attr,
 	                          void **stackaddr,
-	                          size_t *stacksize)
+	                          ::size_t *stacksize)
 	{
 		/* FIXME */
-		PWRN("pthread_attr_getstack() called, might not work correctly");
+		warning("pthread_attr_getstack() called, might not work correctly");
 
 		if (!attr || !*attr || !stackaddr || !stacksize)
 			return EINVAL;
@@ -179,12 +242,6 @@ extern "C" {
 	int pthread_equal(pthread_t t1, pthread_t t2)
 	{
 		return (t1 == t2);
-	}
-
-
-	int _pthread_main_np(void)
-	{
-		return (Thread_base::myself() == 0);
 	}
 
 
@@ -424,7 +481,7 @@ extern "C" {
 		if (!attr || !*attr)
 			return EINVAL;
 
-		PDBG("not implemented yet");
+		warning(__func__, " not implemented yet");
 
 		return 0;
 	}
@@ -436,7 +493,7 @@ extern "C" {
 		if (!attr || !*attr)
 			return EINVAL;
 
-		PDBG("not implemented yet");
+		warning(__func__, " not implemented yet");
 
 		return 0;
 	}
@@ -604,7 +661,7 @@ extern "C" {
 			 * thread to mark the key slot as used.
 			 */
 			if (!key_list[k].first()) {
-				Key_element *key_element = new (env()->heap()) Key_element(Thread_base::myself(), 0);
+				Key_element *key_element = new (env()->heap()) Key_element(Thread::myself(), 0);
 				key_list[k].insert(key_element);
 				*key = k;
 				return 0;
@@ -636,7 +693,7 @@ extern "C" {
 		if (key < 0 || key >= PTHREAD_KEYS_MAX)
 			return EINVAL;
 
-		void *myself = Thread_base::myself();
+		void *myself = Thread::myself();
 
 		Lock_guard<Lock> key_list_lock_guard(key_list_lock);
 
@@ -648,7 +705,7 @@ extern "C" {
 			}
 
 		/* key element does not exist yet - create a new one */
-		Key_element *key_element = new (env()->heap()) Key_element(Thread_base::myself(), value);
+		Key_element *key_element = new (env()->heap()) Key_element(Thread::myself(), value);
 		key_list[key].insert(key_element);
 		return 0;
 	}
@@ -659,7 +716,7 @@ extern "C" {
 		if (key < 0 || key >= PTHREAD_KEYS_MAX)
 			return nullptr;
 
-		void *myself = Thread_base::myself();
+		void *myself = Thread::myself();
 
 		Lock_guard<Lock> key_list_lock_guard(key_list_lock);
 

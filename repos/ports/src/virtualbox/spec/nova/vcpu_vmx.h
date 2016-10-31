@@ -38,7 +38,7 @@ class Vcpu_handler_vmx : public Vcpu_handler
 			using namespace Nova;
 			using namespace Genode;
 
-			Thread_base *myself = Thread_base::myself();
+			Thread *myself = Thread::myself();
 			Utcb *utcb = reinterpret_cast<Utcb *>(myself->utcb());
 
 			_exc_memory<X>(myself, utcb, utcb->qual[0] & 0x38,
@@ -51,7 +51,7 @@ class Vcpu_handler_vmx : public Vcpu_handler
 		{
 			using namespace Nova;
 
-			Genode::Thread_base *myself = Genode::Thread_base::myself();
+			Genode::Thread *myself = Genode::Thread::myself();
 			Utcb *utcb = reinterpret_cast<Utcb *>(myself->utcb());
 
 			/* configure VM exits to get */
@@ -91,7 +91,7 @@ class Vcpu_handler_vmx : public Vcpu_handler
 
 		__attribute__((noreturn)) void _vmx_triple()
 		{
-			Vmm::printf("triple fault - dead\n");
+			Vmm::error("triple fault - dead");
 			exit(-1);
 		}
 
@@ -104,18 +104,19 @@ class Vcpu_handler_vmx : public Vcpu_handler
 
 		__attribute__((noreturn)) void _vmx_invalid()
 		{
-			Genode::Thread_base *myself = Genode::Thread_base::myself();
+			Genode::Thread *myself = Genode::Thread::myself();
 			Nova::Utcb *utcb = reinterpret_cast<Nova::Utcb *>(myself->utcb());
 
 			unsigned const dubious = utcb->inj_info |
 			                         utcb->intr_state | utcb->actv_state;
 			if (dubious)
-				Vmm::printf("%s - dubious - inj_info=0x%x inj_error=%x"
-				            " intr_state=0x%x actv_state=0x%x\n", __func__,
-				            utcb->inj_info, utcb->inj_error,
-				            utcb->intr_state, utcb->actv_state);
+				Vmm::warning(__func__, " - dubious -"
+				             " inj_info=", Genode::Hex(utcb->inj_info),
+				             " inj_error=", Genode::Hex(utcb->inj_error),
+				             " intr_state=", Genode::Hex(utcb->intr_state),
+				             " actv_state=", Genode::Hex(utcb->actv_state));
 
-			Vmm::printf("invalid guest state - dead\n");
+			Vmm::error("invalid guest state - dead");
 			exit(-1);
 		}
 
@@ -132,7 +133,7 @@ class Vcpu_handler_vmx : public Vcpu_handler
 			unsigned long value;
 			void *stack_reply = reinterpret_cast<void *>(&value - 1);
 
-			Genode::Thread_base *myself = Genode::Thread_base::myself();
+			Genode::Thread *myself = Genode::Thread::myself();
 			Nova::Utcb *utcb = reinterpret_cast<Nova::Utcb *>(myself->utcb());
 
 			unsigned int cr = utcb->qual[0] & 0xf;
@@ -161,10 +162,10 @@ class Vcpu_handler_vmx : public Vcpu_handler
 		                 void *(*start_routine) (void *), void *arg,
 		                 Genode::Cpu_session * cpu_session,
 		                 Genode::Affinity::Location location,
-		                 unsigned int cpu_id)
+		                 unsigned int cpu_id, const char * name)
 		:
 			 Vcpu_handler(stack_size, attr, start_routine, arg, cpu_session, 
-			              location, cpu_id)
+			              location, cpu_id, name)
 		{
 			using namespace Nova;
 

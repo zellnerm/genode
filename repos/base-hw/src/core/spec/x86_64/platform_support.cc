@@ -23,6 +23,7 @@ using namespace Genode;
 /* contains physical pointer to multiboot */
 extern "C" Genode::addr_t __initial_bx;
 
+void Platform::_init_additional() { };
 
 Native_region * Platform::_core_only_mmio_regions(unsigned const i)
 {
@@ -46,6 +47,13 @@ void Platform::setup_irq_mode(unsigned irq_number, unsigned trigger,
                               unsigned polarity)
 {
 	Kernel::pic()->ioapic.setup_irq_mode(irq_number, trigger, polarity);
+}
+
+
+bool Platform::get_msi_params(const addr_t mmconf, addr_t &address,
+                              addr_t &data, unsigned &irq_number)
+{
+	return false;
 }
 
 
@@ -73,7 +81,8 @@ Native_region * Platform::_ram_regions(unsigned const i)
 		}
 		_regions[i] = { base, size };
 	} else if (i >= max)
-		PWRN("physical ram region 0x%llx+0x%llx will be not used", base, size);
+		warning("physical ram region ", (void*)base, "+", (size_t)size,
+		        " will be not used");
 
 	return i < max ? &_regions[i] : nullptr;
 }

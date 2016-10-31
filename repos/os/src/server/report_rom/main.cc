@@ -5,7 +5,7 @@
  */
 
 /*
- * Copyright (C) 2014 Genode Labs GmbH
+ * Copyright (C) 2014-2016 Genode Labs GmbH
  *
  * This file is part of the Genode OS framework, which is distributed
  * under the terms of the GNU General Public License version 2.
@@ -14,69 +14,46 @@
 /* Genode includes */
 #include <base/heap.h>
 #include <base/env.h>
-#include <os/server.h>
-#include <os/config.h>
 #include <report_rom/rom_service.h>
 #include <report_rom/report_service.h>
+#include <base/attached_rom_dataspace.h>
+#include <base/component.h>
 
 /* local includes */
 #include "rom_registry.h"
 
 
-namespace Server {
-	using Genode::env;
-	using Genode::Xml_node;
-	struct Main;
-}
+namespace Report_rom { struct Main; }
 
 
-struct Server::Main
+struct Report_rom::Main
 {
-	Entrypoint &ep;
+	Genode::Env &env;
 
-	Genode::Sliced_heap sliced_heap = { env()->ram_session(),
-	                                    env()->rm_session() };
+	Genode::Sliced_heap sliced_heap { env.ram(), env.rm() };
 
-	Xml_node _rom_config_node() const
+	Rom::Registry rom_registry { sliced_heap, config_rom };
+
+	Genode::Attached_rom_dataspace config_rom { env, "config" };
+
+	bool verbose = config_rom.xml().attribute_value("verbose", false);
+
+	Report::Root report_root { env, sliced_heap, rom_registry, verbose };
+	Rom   ::Root    rom_root { env, sliced_heap, rom_registry };
+
+	Main(Genode::Env &env) : env(env)
 	{
-		try {
-			return Genode::config()->xml_node().sub_node("rom"); }
-		catch (Xml_node::Nonexistent_sub_node) {
-			PWRN("missing <rom> configuration");
-			return Xml_node("<rom>");
-		}
-	}
-
-	Rom::Registry rom_registry = { sliced_heap, _rom_config_node() };
-
-	bool _verbose_config()
-	{
-		char const *attr = "verbose";
-		return Genode::config()->xml_node().has_attribute(attr)
-		    && Genode::config()->xml_node().attribute(attr).has_value("yes");
-	}
-
-	bool verbose = _verbose_config();
-
-	Report::Root report_root = { ep, sliced_heap, rom_registry, verbose };
-	Rom   ::Root    rom_root = { ep, sliced_heap, rom_registry };
-
-	Main(Entrypoint &ep) : ep(ep)
-	{
-		env()->parent()->announce(ep.manage(report_root));
-		env()->parent()->announce(ep.manage(rom_root));
+		env.parent().announce(env.ep().manage(report_root));
+		env.parent().announce(env.ep().manage(rom_root));
 	}
 };
 
 
-namespace Server {
+/***************
+ ** Component **
+ ***************/
 
-	char const *name() { return "report_rom_ep"; }
+Genode::size_t Component::stack_size() { return 4*1024*sizeof(long); }
 
-	size_t stack_size() { return 4*1024*sizeof(long); }
+void Component::construct(Genode::Env &env) { static Report_rom::Main main(env); }
 
-	void construct(Entrypoint &ep)
-	{
-		static Main main(ep);
-	}
-}

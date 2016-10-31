@@ -15,6 +15,10 @@
 #include <base/thread.h>
 #include <base/sleep.h>
 
+/* base-internal includes */
+#include <base/internal/native_thread.h>
+#include <base/internal/stack.h>
+
 /* Linux syscall bindings */
 #include <linux_syscalls.h>
 
@@ -24,13 +28,21 @@ using namespace Genode;
 static void empty_signal_handler(int) { }
 
 
-void Thread_base::_thread_start()
+void Thread::_thread_start()
 {
+	Thread * const thread = Thread::myself();
+
+	/* use primary stack as alternate stack for fatal signals (exceptions) */
+	void   *stack_base = (void *)thread->_stack->base();
+	size_t  stack_size = thread->_stack->top() - thread->_stack->base();
+
+	lx_sigaltstack(stack_base, stack_size);
+
 	/*
 	 * Set signal handler such that canceled system calls get not transparently
 	 * retried after a signal gets received.
 	 */
-	lx_sigaction(LX_SIGUSR1, empty_signal_handler);
+	lx_sigaction(LX_SIGUSR1, empty_signal_handler, false);
 
 	/*
 	 * Deliver SIGCHLD signals to no thread other than the main thread. Core's
@@ -40,23 +52,23 @@ void Thread_base::_thread_start()
 	 */
 	lx_sigsetmask(LX_SIGCHLD, false);
 
-	Thread_base::myself()->entry();
-	Thread_base::myself()->_join_lock.unlock();
+	Thread::myself()->entry();
+	Thread::myself()->_join_lock.unlock();
 	sleep_forever();
 }
 
 
-void Thread_base::_init_platform_thread(size_t, Type) { }
+void Thread::_init_platform_thread(size_t, Type) { }
 
 
-void Thread_base::_deinit_platform_thread() { }
+void Thread::_deinit_platform_thread() { }
 
 
-void Thread_base::start()
+void Thread::start()
 {
-	_tid.tid = lx_create_thread(Thread_base::_thread_start, stack_top(), this);
-	_tid.pid = lx_getpid();
+	native_thread().tid = lx_create_thread(Thread::_thread_start, stack_top(), this);
+	native_thread().pid = lx_getpid();
 }
 
 
-void Thread_base::cancel_blocking() { }
+void Thread::cancel_blocking() { }

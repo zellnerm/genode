@@ -15,12 +15,13 @@
 #include <base/allocator_avl.h>
 #include <base/env.h>
 #include <base/exception.h>
-#include <base/printf.h>
+#include <base/log.h>
 #include <util/misc_math.h>
 #include <util/string.h>
 #include <nic/packet_allocator.h>
 #include <nic_session/connection.h>
 #include <timer_session/connection.h>
+#include <foc/capability_space.h>
 
 #include <vcpu.h>
 #include <linux.h>
@@ -40,7 +41,7 @@ namespace Fiasco {
  * Debugging/Tracing
  */
 #if TX_BENCH | RX_BENCH
-struct Counter : public Genode::Thread<8192>
+struct Counter : public Genode::Thread_deprecated<8192>
 {
 	int             cnt;
 	Genode::size_t size;
@@ -51,7 +52,8 @@ struct Counter : public Genode::Thread<8192>
 		int interval = 5;
 		while(1) {
 			_timer.msleep(interval * 1000);
-			PDBG("LX Packets %d/s bytes/s: %d", cnt / interval, size / interval);
+			Genode::log("LX Packets ", cnt/interval, "/s "
+			            "bytes/s: ", size / interval);
 			cnt = 0;
 			size = 0;
 		}
@@ -59,7 +61,7 @@ struct Counter : public Genode::Thread<8192>
 
 	void inc(Genode::size_t s) { cnt++; size += s; }
 
-	Counter() : Thread("net-counter"), cnt(0), size(0)  { start(); }
+	Counter() : Thread_deprecated("net-counter"), cnt(0), size(0)  { start(); }
 };
 #else
 struct Counter { inline void inc(Genode::size_t s) { } };
@@ -93,7 +95,7 @@ static Nic::Connection *nic() {
 
 namespace {
 
-	class Signal_thread : public Genode::Thread<8192>
+	class Signal_thread : public Genode::Thread_deprecated<8192>
 	{
 		private:
 
@@ -119,14 +121,14 @@ namespace {
 					receiver.wait_for_signal();
 
 					if (l4_error(l4_irq_trigger(_cap)) != -1)
-						PWRN("IRQ net trigger failed\n");
+						warning("IRQ net trigger failed");
 				}
 			}
 
 		public:
 
 			Signal_thread(Fiasco::l4_cap_idx_t cap, Genode::Lock *sync)
-			: Genode::Thread<8192>("net-signal-thread"), _cap(cap), _sync(sync) {
+			: Genode::Thread_deprecated<8192>("net-signal-thread"), _cap(cap), _sync(sync) {
 				start(); }
 	};
 }
@@ -149,11 +151,14 @@ extern "C" {
 	l4_cap_idx_t genode_net_irq_cap()
 	{
 		Linux::Irq_guard guard;
-		static Genode::Native_capability cap = L4lx::vcpu_connection()->alloc_irq();
+		Genode::Foc_native_cpu_client
+			native_cpu(L4lx::cpu_connection()->native_cpu());
+		static Genode::Native_capability cap = native_cpu.alloc_irq();
 		static Genode::Lock lock(Genode::Lock::LOCKED);
-		static Signal_thread th(cap.dst(), &lock);
+		static Fiasco::l4_cap_idx_t const kcap = Genode::Capability_space::kcap(cap);
+		static Signal_thread th(kcap, &lock);
 		lock.lock();
-		return cap.dst();
+		return kcap;
 	}
 
 

@@ -11,11 +11,11 @@
  * under the terms of the GNU General Public License version 2.
  */
 
-#ifndef _ALLOCATOR_GUARD_H_
-#define _ALLOCATOR_GUARD_H_
+#ifndef _INCLUDE__BASE__ALLOCATOR_GUARD_H_
+#define _INCLUDE__BASE__ALLOCATOR_GUARD_H_
 
 #include <base/allocator.h>
-#include <base/printf.h>
+#include <base/log.h>
 #include <base/stdint.h>
 
 namespace Genode { class Allocator_guard; }
@@ -71,11 +71,12 @@ class Genode::Allocator_guard : public Allocator
 		bool alloc(size_t size, void **out_addr) override
 		{
 			if ((_amount - _consumed) < (size + _allocator->overhead(size))) {
-				PWRN("Quota exceeded! amount=%zu, size=%zu, consumed=%zu",
-				     _amount, (size + _allocator->overhead(size)), _consumed);
+				warning("Quota exceeded! amount=", _amount,
+				        ", size=", (size + _allocator->overhead(size)),
+				        ", consumed=", _consumed);
 				return false;
 			}
-			bool b = _allocator->alloc(size, out_addr);
+			bool const b = _allocator->alloc(size, out_addr);
 			if (b)
 				_consumed += size + _allocator->overhead(size);
 			return b;
@@ -109,4 +110,4 @@ class Genode::Allocator_guard : public Allocator
 			return _allocator->need_size_for_free(); }
 };
 
-#endif /* _ALLOCATOR_GUARD_H_ */
+#endif /* _INCLUDE__BASE__ALLOCATOR_GUARD_H_ */

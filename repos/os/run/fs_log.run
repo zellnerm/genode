@@ -14,14 +14,14 @@ set rounds 20
 set config {
 <config prio_levels="2">
 	<parent-provides>
-		<service name="CAP"/>
 		<service name="CPU"/>
 		<service name="LOG"/>
 		<service name="PD"/>
 		<service name="RAM"/>
 		<service name="RM"/>
 		<service name="ROM"/>
-		<service name="SIGNAL"/>
+		<service name="IO_PORT"/>
+		<service name="IRQ"/>
 	</parent-provides>
 	<default-route>
 		<any-service> <parent/> <any-child/> </any-service>
@@ -69,4 +69,4 @@ build_boot_image "core init ld.lib.so bomb timer vfs fs_log"
 
 append qemu_args " -nographic"
 
-run_genode_until "Done\. Going to sleep\." $timeout
+run_genode_until {.*\[0] Done\..*\n} $timeout

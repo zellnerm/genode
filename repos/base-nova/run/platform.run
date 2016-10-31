@@ -14,9 +14,7 @@ set config {
 			<service name="RAM"/>
 			<service name="CPU"/>
 			<service name="RM"/>
-			<service name="CAP"/>
 			<service name="PD"/>
-			<service name="SIGNAL"/>
 			<service name="LOG"/>
 		</parent-provides>
 		<default-route>
@@ -37,7 +35,7 @@ install_config $config
 
 build_boot_image "core init test-platform"
 
-append qemu_args "-nographic -m 128"
+append qemu_args "-nographic -m 128 -smp 2"
 
 run_genode_until {Test finished} 150
 

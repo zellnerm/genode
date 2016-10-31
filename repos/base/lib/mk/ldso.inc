@@ -8,14 +8,24 @@ SRC_CC       = main.cc test.cc exception.cc file.cc dependency.cc debug.cc \
                shared_object.cc
 SRC_S        = jmp_slot.s
 INC_DIR     += $(DIR)/include
+INC_DIR     += $(BASE_DIR)/src/include
 LD_OPT      += -Bsymbolic-functions --version-script=$(DIR)/symbol.map
-ENTRY_POINT  = _start
 
 ifneq ($(filter linux, $(SPECS)),)
-LD_OPT += -T$(call select_from_repositories,src/ld/context_area.nostdlib.ld)
-else
-LD_OPT += -T$(DIR)/linker.ld
+
+ENTRY_POINT = _start_initial_stack
+LD_OPT     += -T$(call select_from_repositories,src/ld/stack_area.nostdlib.ld) \
+
+ifneq ($(filter x86_32, $(SPECS)),)
+LD_OPT     += -T$(DIR)/linux-32.ld
 endif
+
+else
+ENTRY_POINT = _start
+LD_OPT     += -T$(DIR)/linker.ld
+endif
+
+include $(REP_DIR)/lib/import/import-ld.mk
 
 vpath %.cc $(DIR)
 

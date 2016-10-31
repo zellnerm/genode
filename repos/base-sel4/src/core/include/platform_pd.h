@@ -23,7 +23,7 @@
 #include <vm_space.h>
 
 /* base-internal includes */
-#include <internal/capability_space_sel4.h>
+#include <base/internal/capability_space_sel4.h>
 
 namespace Genode { class Platform_pd; }
 
@@ -36,32 +36,33 @@ class Genode::Platform_pd : public Address_space
 
 		Page_table_registry _page_table_registry;
 
-		unsigned const _vm_pad_cnode_sel;
-
-		unsigned const _vm_cnode_sel;
-
-		unsigned const        _page_directory_sel;
-		Untyped_address  _init_page_directory();
-		Untyped_address const _page_directory = _init_page_directory();
+		Cap_sel const _page_directory_sel;
+		addr_t        _init_page_directory();
+		addr_t  const _page_directory = _init_page_directory();
 
 		Vm_space _vm_space;
 
-		unsigned const _cspace_cnode_sel;
+		Cnode _cspace_cnode_1st;
 
-		Cnode _cspace_cnode;
+		Lazy_volatile_object<Cnode> _cspace_cnode_2nd[1UL << CSPACE_SIZE_LOG2_1ST];
 
 		Native_capability _parent;
 
 		/*
 		 * Allocator for core-managed selectors within the PD's CSpace
 		 */
-		struct Sel_alloc : Bit_allocator<1 << NUM_CORE_MANAGED_SEL_LOG2>
+		typedef Bit_allocator<1 << NUM_CORE_MANAGED_SEL_LOG2> Sel_bit_alloc;
+
+		struct Sel_alloc : Sel_bit_alloc
 		{
 			Sel_alloc() { _reserve(0, INITIAL_SEL_END); }
 		};
 
 		Sel_alloc _sel_alloc;
 		Lock _sel_alloc_lock;
+
+		Cap_sel alloc_sel();
+		void free_sel(Cap_sel sel);
 
 	public:
 
@@ -78,11 +79,8 @@ class Genode::Platform_pd : public Address_space
 
 		/**
 		 * Bind thread to protection domain
-		 *
-		 * \return  0  on success or
-		 *         -1  if thread ID allocation failed.
 		 */
-		int bind_thread(Platform_thread *thread);
+		bool bind_thread(Platform_thread *thread);
 
 		/**
 		 * Unbind thread from protection domain
@@ -94,7 +92,7 @@ class Genode::Platform_pd : public Address_space
 		/**
 		 * Assign parent interface to protection domain
 		 */
-		int assign_parent(Native_capability parent);
+		void assign_parent(Native_capability parent);
 
 
 		/*****************************
@@ -108,13 +106,18 @@ class Genode::Platform_pd : public Address_space
 		 ** seL4-specific interface **
 		 *****************************/
 
-		unsigned alloc_sel();
+		Cnode &cspace_cnode(Cap_sel sel)
+		{
+			const unsigned index = sel.value() / (1 << CSPACE_SIZE_LOG2_2ND);
+			ASSERT(index < sizeof(_cspace_cnode_2nd) /
+	                       sizeof(_cspace_cnode_2nd[0]));
 
-		void free_sel(unsigned sel);
+			return *_cspace_cnode_2nd[index];
+		}
 
-		Cnode &cspace_cnode() { return _cspace_cnode; }
+		Cnode &cspace_cnode_1st() { return _cspace_cnode_1st; }
 
-		unsigned page_directory_sel() const { return _page_directory_sel; }
+		Cap_sel page_directory_sel() const { return _page_directory_sel; }
 
 		size_t cspace_size_log2() { return CSPACE_SIZE_LOG2; }
 

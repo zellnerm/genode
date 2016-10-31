@@ -14,7 +14,7 @@
 
 /* Genode includes */
 #include <base/env.h>
-#include <base/printf.h>
+#include <base/log.h>
 #include <base/slab.h>
 #include <util/construct_at.h>
 #include <util/string.h>
@@ -32,23 +32,31 @@ namespace Genode {
 
 	class Slab_alloc : public Slab
 	{
+		private:
+
+			size_t const _object_size;
+
 			size_t _calculate_block_size(size_t object_size)
 			{
-				size_t block_size = 8 * (object_size + sizeof(Slab_entry)) + sizeof(Slab_block);
+				size_t block_size = 16*object_size;
 				return align_addr(block_size, 12);
 			}
 
 		public:
 
 			Slab_alloc(size_t object_size, Allocator *backing_store)
-			: Slab(object_size, _calculate_block_size(object_size), 0, backing_store)
+			:
+				Slab(object_size, _calculate_block_size(object_size), 0, backing_store),
+				_object_size(object_size)
 			{ }
 
-			inline void *alloc()
+			void *alloc()
 			{
 				void *result;
-				return (Slab::alloc(slab_size(), &result) ? result : 0);
+				return (Slab::alloc(_object_size, &result) ? result : 0);
 			}
+
+			void free(void *ptr) { Slab::free(ptr, _object_size); }
 	};
 }
 
@@ -59,6 +67,8 @@ namespace Genode {
 class Malloc : public Genode::Allocator
 {
 	private:
+
+		typedef Genode::size_t size_t;
 
 		enum {
 			SLAB_START = 2,  /* 4 Byte (log2) */
@@ -94,7 +104,7 @@ class Malloc : public Genode::Allocator
 			}
 		}
 
-		~Malloc() { PDBG("CALLED"); }
+		~Malloc() { Genode::warning(__func__, " unexpectedly called"); }
 
 		/**
 		 * Allocator interface
@@ -184,7 +194,8 @@ extern "C" void *malloc(size_t size)
 extern "C" void *calloc(size_t nmemb, size_t size)
 {
 	void *addr = malloc(nmemb*size);
-	Genode::memset(addr, 0, nmemb*size);
+	if (addr)
+		Genode::memset(addr, 0, nmemb*size);
 	return addr;
 }
 

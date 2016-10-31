@@ -37,9 +37,9 @@
 #include <input/event.h>
 
 using Genode::List;
-using Genode::Thread;
+using Genode::Thread_deprecated;
 
-class Vancouver_console : public Thread<8192>, public StaticReceiver<Vancouver_console>
+class Vancouver_console : public Thread_deprecated<8192>, public StaticReceiver<Vancouver_console>
 {
 	private:
 
@@ -55,7 +55,7 @@ class Vancouver_console : public Thread<8192>, public StaticReceiver<Vancouver_c
 		Framebuffer::Mode            _fb_mode;
 		bool                         _left, _middle, _right;
 
-		unsigned _input_to_ps2mouse(Input::Event const *);
+		unsigned _input_to_ps2mouse(Input::Event const &);
 
 	public:
 

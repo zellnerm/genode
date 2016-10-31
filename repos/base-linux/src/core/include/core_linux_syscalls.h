@@ -16,8 +16,11 @@
 
 /* basic Linux syscall bindings */
 #include <linux_syscalls.h>
+
+#define size_t __SIZE_TYPE__ /* see comment in 'linux_syscalls.h' */
 #include <sys/stat.h>
 #include <fcntl.h>
+#undef size_t
 
 
 /*******************************************************
@@ -120,41 +123,6 @@ inline int lx_setgid(unsigned int gid)
 inline int lx_pollpid()
 {
 	return lx_syscall(SYS_wait4, -1 /* any PID */, (int *)0, 1 /* WNOHANG */, 0);
-}
-
-
-/*********************
- ** Chroot handling **
- *********************/
-
-inline int lx_chroot(char const *path)
-{
-	return lx_syscall(SYS_chroot, path);
-}
-
-
-inline int lx_chdir(char const *path)
-{
-	return lx_syscall(SYS_chdir, path);
-}
-
-
-inline int lx_getcwd(char *dst, size_t dst_len)
-{
-	return lx_syscall(SYS_getcwd, dst, dst_len);
-}
-
-
-inline int lx_bindmount(char const *source, char const *target)
-{
-	enum { MS_BIND = 4096 };
-	return lx_syscall(SYS_mount, source, target, 0, MS_BIND, 0);
-}
-
-
-inline int lx_umount(char const *target)
-{
-	return lx_syscall(SYS_umount2, target, 0);
 }
 
 

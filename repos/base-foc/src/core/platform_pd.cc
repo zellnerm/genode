@@ -13,7 +13,7 @@
  */
 
 /* Genode includes */
-#include <base/native_types.h>
+#include <base/native_capability.h>
 #include <util/misc_math.h>
 
 /* core includes */
@@ -41,7 +41,7 @@ static addr_t core_utcb_base() {
  ** Public object members **
  ***************************/
 
-int Platform_pd::bind_thread(Platform_thread *thread)
+bool Platform_pd::bind_thread(Platform_thread *thread)
 {
 	/*
 	 * Fiasco.OC limits the UTCB area for roottask to 16K. Therefore, the
@@ -54,30 +54,31 @@ int Platform_pd::bind_thread(Platform_thread *thread)
 		if (_threads[i])
 			continue;
 
-		_threads[i]                = thread;
+		_threads[i] = thread;
+
 		if (thread->core_thread())
-			thread->_utcb = (l4_utcb_t*) (core_utcb_base() + i * L4_UTCB_OFFSET);
+			thread->_utcb = (addr_t) (core_utcb_base() + i * L4_UTCB_OFFSET);
 		else
 			thread->_utcb =
-				reinterpret_cast<l4_utcb_t*>(utcb_area_start() + i * L4_UTCB_OFFSET);
-		Native_thread cap_offset   = THREAD_AREA_BASE + i * THREAD_AREA_SLOT;
-		thread->_gate.remote   = cap_offset + THREAD_GATE_CAP;
-		thread->_pager.remote  = cap_offset + THREAD_PAGER_CAP;
-		thread->_irq.remote    = cap_offset + THREAD_IRQ_CAP;
+				reinterpret_cast<addr_t>(utcb_area_start() + i * L4_UTCB_OFFSET);
+
+		Fiasco::l4_cap_idx_t cap_offset = THREAD_AREA_BASE + i * THREAD_AREA_SLOT;
+
+		thread->_gate.remote  = cap_offset + THREAD_GATE_CAP;
+		thread->_pager.remote = cap_offset + THREAD_PAGER_CAP;
+		thread->_irq.remote   = cap_offset + THREAD_IRQ_CAP;
 
 		/* if it's no core-thread we have to map parent and pager gate cap */
-		if (!thread->core_thread()) {
-			_task.map(_task.local.dst());
-			_parent.map(_task.local.dst());
-		}
+		if (!thread->core_thread())
+			_task.map(_task.local.data()->kcap());
 
 		/* inform thread about binding */
 		thread->bind(this);
-		return 0;
+		return true;
 	}
 
-	PERR("thread alloc failed");
-	return -1;
+	error("thread alloc failed");
+	return false;
 }
 
 
@@ -94,24 +95,25 @@ void Platform_pd::unbind_thread(Platform_thread *thread)
 }
 
 
-int Platform_pd::assign_parent(Native_capability parent)
+void Platform_pd::assign_parent(Native_capability parent)
 {
-	if (!parent.valid()) return -1;
-	_parent.local  = parent;
-	_parent.remote = PARENT_CAP;
-	return 0;
+	if (_parent.remote == Fiasco::L4_INVALID_CAP && parent.valid()) {
+		_parent.local  = parent;
+		_parent.remote = PARENT_CAP;
+		_parent.map(_task.local.data()->kcap());
+	}
 }
 
 
 Platform_pd::Platform_pd(Core_cap_index* i)
-: _task(Native_capability(i), TASK_CAP)
+: _task(Native_capability(*i), TASK_CAP)
 {
 	for (unsigned i = 0; i < THREAD_MAX; i++)
 		_threads[i] = (Platform_thread*) 0;
 }
 
 
-Platform_pd::Platform_pd()
+Platform_pd::Platform_pd(Allocator *, char const *)
 : _task(true, TASK_CAP)
 {
 	for (unsigned i = 0; i < THREAD_MAX; i++)
@@ -120,9 +122,9 @@ Platform_pd::Platform_pd()
 	l4_fpage_t utcb_area = l4_fpage(utcb_area_start(),
 	                                log2<unsigned>(UTCB_AREA_SIZE), 0);
 	l4_msgtag_t tag = l4_factory_create_task(L4_BASE_FACTORY_CAP,
-	                                         _task.local.dst(), utcb_area);
+	                                         _task.local.data()->kcap(), utcb_area);
 	if (l4_msgtag_has_error(tag))
-		PERR("pd creation failed");
+		error("pd creation failed");
 }
 
 

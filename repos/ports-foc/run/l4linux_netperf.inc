@@ -78,12 +78,10 @@ set config  {
 		<service name="IRQ"/>
 		<service name="IO_MEM"/>
 		<service name="IO_PORT"/>
-		<service name="CAP"/>
 		<service name="PD"/>
 		<service name="RM"/>
 		<service name="CPU"/>
 		<service name="LOG"/>
-		<service name="SIGNAL"/>
 	</parent-provides>
 	<default-route>
 		<any-service> <parent/> <any-child/> </any-service>
@@ -140,6 +138,7 @@ append config {
 	<start name="nic_bridge">
 		<resource name="RAM" quantum="6M"/>
 		<provides><service name="Nic"/></provides>
+		<config/>
 		<route>
 			<service name="Nic"> <child name="usb_drv"/> </service>
 			<any-service> <parent/> <any-child/> </any-service>

@@ -61,16 +61,16 @@ struct Ps2_mouse_packet : Genode::Register<32>
 };
 
 
-static bool is_mouse_event(Input::Event const *ev)
+static bool mouse_event(Input::Event const &ev)
 {
 	using Input::Event;
-	if (ev->type() == Event::PRESS || ev->type() == Event::RELEASE) {
-		if (ev->code() == Input::BTN_LEFT)   return true;
-		if (ev->code() == Input::BTN_MIDDLE) return true;
-		if (ev->code() == Input::BTN_RIGHT)  return true;
+	if (ev.type() == Event::PRESS || ev.type() == Event::RELEASE) {
+		if (ev.code() == Input::BTN_LEFT)   return true;
+		if (ev.code() == Input::BTN_MIDDLE) return true;
+		if (ev.code() == Input::BTN_RIGHT)  return true;
 	}
 
-	if (ev->type() == Event::MOTION)
+	if (ev.type() == Event::MOTION)
 		return true;
 
 	return false;
@@ -82,28 +82,28 @@ static bool is_mouse_event(Input::Event const *ev)
  *
  * This function updates _left, _middle, and _right as a side effect.
  */
-unsigned Vancouver_console::_input_to_ps2mouse(Input::Event const *ev)
+unsigned Vancouver_console::_input_to_ps2mouse(Input::Event const &ev)
 {
 	/* track state of mouse buttons */
 	using Input::Event;
-	if (ev->type() == Event::PRESS || ev->type() == Event::RELEASE) {
-		bool const pressed = ev->type() == Event::PRESS;
-		if (ev->code() == Input::BTN_LEFT)   _left   = pressed;
-		if (ev->code() == Input::BTN_MIDDLE) _middle = pressed;
-		if (ev->code() == Input::BTN_RIGHT)  _right  = pressed;
+	if (ev.type() == Event::PRESS || ev.type() == Event::RELEASE) {
+		bool const pressed = ev.type() == Event::PRESS;
+		if (ev.code() == Input::BTN_LEFT)   _left   = pressed;
+		if (ev.code() == Input::BTN_MIDDLE) _middle = pressed;
+		if (ev.code() == Input::BTN_RIGHT)  _right  = pressed;
 	}
 
 	int rx;
 	int ry;
 
-	if (ev->is_absolute_motion()) {
+	if (ev.absolute_motion()) {
 		static Input::Event last_event;
-		rx = ev->ax() - last_event.ax();
-		ry = ev->ay() - last_event.ay();
-		last_event = *ev;
+		rx = ev.ax() - last_event.ax();
+		ry = ev.ay() - last_event.ay();
+		last_event = ev;
 	} else {
-		rx = ev->rx();
-		ry = ev->ry();
+		rx = ev.rx();
+		ry = ev.ry();
 	}
 
 	/* clamp relative motion vector to bounds */
@@ -223,15 +223,10 @@ void Vancouver_console::entry()
 	try {
 		framebuffer = new (env()->heap()) Framebuffer::Connection();
 	} catch (...) {
-		PERR("Headless mode - no framebuffer session available");
+		Genode::error("Headless mode - no framebuffer session available");
 		_startup_lock.unlock();
 		return;
 	}
-
-	Genode::Dataspace_capability ev_ds_cap = input.dataspace();
-
-	Input::Event *ev_buf = static_cast<Input::Event *>
-	                       (env()->rm_session()->attach(ev_ds_cap));
 
 	_fb_size = Dataspace_client(framebuffer->dataspace()).size();
 	_fb_mode = framebuffer->mode();
@@ -257,7 +252,7 @@ void Vancouver_console::entry()
 	_startup_lock.unlock();
 
 	while (1) {
-		while (!input.is_pending()) {
+		while (!input.pending()) {
 
 			/* transfer text buffer content into chunky canvas */
 			if (_regs && ++count % 10 == 0 && _regs->mode == 0
@@ -335,28 +330,26 @@ void Vancouver_console::entry()
 			timer.msleep(10);
 		}
 
-		for (int i = 0, num_ev = input.flush(); i < num_ev; i++) {
+		input.for_each_event([&] (Input::Event const &ev) {
 			if (!fb_active) fb_active = true;
 
-			Input::Event *ev = &ev_buf[i];
-
 			/* update mouse model (PS2) */
-			if (is_mouse_event(ev)) {
+			if (mouse_event(ev)) {
 				MessageInput msg(0x10001, _input_to_ps2mouse(ev));
 				_motherboard()->bus_input.send(msg);
 			}
 
-			if (ev->type() == Input::Event::PRESS)   {
-				if (ev->code() <= 0xee) {
-					vkeyb.handle_keycode_press(ev->code());
+			if (ev.type() == Input::Event::PRESS)   {
+				if (ev.code() <= 0xee) {
+					vkeyb.handle_keycode_press(ev.code());
 				}
 			}
-			if (ev->type() == Input::Event::RELEASE) {
-				if (ev->code() <= 0xee) { /* keyboard event */
-					vkeyb.handle_keycode_release(ev->code());
+			if (ev.type() == Input::Event::RELEASE) {
+				if (ev.code() <= 0xee) { /* keyboard event */
+					vkeyb.handle_keycode_release(ev.code());
 				}
 			}
-		}
+		});
 	}
 }
 
@@ -372,7 +365,7 @@ Vancouver_console::Vancouver_console(Synced_motherboard &mb,
                                      Genode::size_t vm_fb_size,
                                      Genode::Dataspace_capability fb_ds)
 :
-	Thread("vmm_console"),
+	Thread_deprecated("vmm_console"),
 	_startup_lock(Genode::Lock::LOCKED),
 	_motherboard(mb), _pixels(0), _guest_fb(0), _fb_size(0),
 	_fb_ds(fb_ds), _vm_fb_size(vm_fb_size), _regs(0),

@@ -169,9 +169,10 @@ class Session : public Session_list::Element
 			return s && (s->_domain == _domain);
 		}
 
-		bool has_click_focusable_domain()
+		bool has_focusable_domain()
 		{
-			return has_valid_domain() && _domain->focus_click();
+			return has_valid_domain()
+			    && (_domain->focus_click() || _domain->focus_transient());
 		}
 
 		bool has_transient_focusable_domain()
@@ -195,17 +196,17 @@ class Session : public Session_list::Element
 		 * Select the policy that matches the label. If multiple policies
 		 * match, select the one with the largest number of characters.
 		 */
-		void apply_session_policy(Domain_registry const &domain_registry)
+		void apply_session_policy(Genode::Xml_node config,
+		                          Domain_registry const &domain_registry)
 		{
 			reset_domain();
 
 			try {
-				Genode::Session_policy policy(_label);
+				Genode::Session_policy policy(_label, config);
 
 				/* read domain attribute */
 				if (!policy.has_attribute("domain")) {
-					PERR("policy for label \"%s\" lacks domain declaration",
-					     _label.string());
+					Genode::error("policy for label \"", _label, "\" lacks domain declaration");
 					return;
 				}
 
@@ -219,7 +220,12 @@ class Session : public Session_list::Element
 				Domain_name name(buf);
 				_domain = domain_registry.lookup(name);
 
-			} catch (...) { }
+				if (!_domain)
+					Genode::error("policy for label \"", _label,
+					              "\" specifies nonexistent domain \"", name, "\"");
+
+			} catch (...) {
+				Genode::error("no policy matching label \"", _label, "\""); }
 		}
 };
 

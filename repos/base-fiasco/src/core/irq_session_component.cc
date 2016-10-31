@@ -12,7 +12,7 @@
  */
 
 /* Genode includes */
-#include <base/printf.h>
+#include <base/log.h>
 #include <util/arg_string.h>
 
 /* core includes */
@@ -52,7 +52,7 @@ bool Irq_object::_associate()
 	                     L4_IPC_SHORT_MSG, &dw0, &dw1,
 	                     L4_IPC_BOTH_TIMEOUT_0, &result);
 
-	if (err != L4_IPC_RETIMEOUT) PERR("IRQ association failed");
+	if (err != L4_IPC_RETIMEOUT) error("IRQ association failed");
 
 	return (err == L4_IPC_RETIMEOUT);
 }
@@ -74,14 +74,14 @@ void Irq_object::_wait_for_irq()
 		            L4_IPC_SHORT_MSG, &dw0, &dw1,
 		            L4_IPC_NEVER, &result);
 
-		if (L4_IPC_IS_ERROR(result)) PERR("Ipc error %lx", L4_IPC_ERROR(result));
+		if (L4_IPC_IS_ERROR(result)) error("Ipc error ", L4_IPC_ERROR(result));
 	} while (L4_IPC_IS_ERROR(result));
 }
 
 
 void Irq_object::start()
 {
-	::Thread_base::start();
+	::Thread::start();
 	_sync_bootup.lock();
 }
 
@@ -89,7 +89,7 @@ void Irq_object::start()
 void Irq_object::entry()
 {
 	if (!_associate()) {
-		PERR("Could not associate with IRQ 0x%x", _irq);
+		error("Could not associate with IRQ ", _irq);
 		return;
 	}
 
@@ -115,7 +115,7 @@ void Irq_object::entry()
 
 Irq_object::Irq_object(unsigned irq)
 :
-	Thread<4096>("irq"),
+	Thread_deprecated<4096>("irq"),
 	_sync_ack(Lock::LOCKED), _sync_bootup(Lock::LOCKED),
 	_irq(irq)
 { }
@@ -132,8 +132,8 @@ Irq_session_component::Irq_session_component(Range_allocator *irq_alloc,
 	if (msi)
 		throw Root::Unavailable();
 
-	if (!irq_alloc || irq_alloc->alloc_addr(1, _irq_number).is_error()) {
-		PERR("Unavailable IRQ 0x%x requested", _irq_number);
+	if (!irq_alloc || irq_alloc->alloc_addr(1, _irq_number).error()) {
+		error("Unavailable IRQ ", _irq_number, " requested");
 		throw Root::Unavailable();
 	}
 
@@ -143,7 +143,7 @@ Irq_session_component::Irq_session_component(Range_allocator *irq_alloc,
 
 Irq_session_component::~Irq_session_component()
 {
-	PERR("Not yet implemented.");
+	error("Not yet implemented.");
 }
 
 

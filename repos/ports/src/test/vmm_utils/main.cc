@@ -20,11 +20,10 @@
 #include <vmm/printf.h>
 
 using Genode::Cap_connection;
-using Genode::printf;
 using Genode::sleep_forever;
 
 
-class Vcpu_dispatcher : public Vmm::Vcpu_dispatcher<Genode::Thread_base>
+class Vcpu_dispatcher : public Vmm::Vcpu_dispatcher<Genode::Thread>
 {
 	private:
 
@@ -51,7 +50,7 @@ class Vcpu_dispatcher : public Vmm::Vcpu_dispatcher<Genode::Thread_base>
 
 		void _svm_startup()
 		{
-			Vmm::printf("_svm_startup called\n");
+			Vmm::log("_svm_startup called");
 		}
 
 	public:
@@ -60,7 +59,7 @@ class Vcpu_dispatcher : public Vmm::Vcpu_dispatcher<Genode::Thread_base>
 
 		Vcpu_dispatcher(Cap_connection &cap, Type type)
 		:
-			Vmm::Vcpu_dispatcher<Genode::Thread_base>(STACK_SIZE, cap, Genode::env()->cpu_session(), Genode::Affinity::Location()),
+			Vmm::Vcpu_dispatcher<Genode::Thread>(STACK_SIZE, cap, Genode::env()->cpu_session(), Genode::Affinity::Location()),
 			_vcpu_thread(STACK_SIZE, Genode::env()->cpu_session(), Genode::Affinity::Location())
 		{
 			using namespace Nova;
@@ -86,12 +85,12 @@ class Vcpu_dispatcher : public Vmm::Vcpu_dispatcher<Genode::Thread_base>
 
 int main(int argc, char **argv)
 {
-	printf("--- VBox started ---\n");
+	Genode::log("--- VBox started ---");
 
 	static Cap_connection cap;
 	static Vcpu_dispatcher vcpu_dispatcher(cap, Vcpu_dispatcher::SVM);
 
-	printf("going to sleep forever...\n");
+	Genode::log("going to sleep forever...");
 	sleep_forever();
 	return 0;
 }

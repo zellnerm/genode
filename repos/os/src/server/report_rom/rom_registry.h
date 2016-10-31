@@ -5,7 +5,7 @@
  */
 
 /*
- * Copyright (C) 2014 Genode Labs GmbH
+ * Copyright (C) 2014-2016 Genode Labs GmbH
  *
  * This file is part of the Genode OS framework, which is distributed
  * under the terms of the GNU General Public License version 2.
@@ -16,6 +16,7 @@
 
 /* Genode includes */
 #include <report_rom/rom_registry.h>
+#include <os/session_policy.h>
 
 namespace Rom { struct Registry; }
 
@@ -25,8 +26,7 @@ struct Rom::Registry : Registry_for_reader, Registry_for_writer, Genode::Noncopy
 	private:
 
 		Genode::Allocator &_md_alloc;
-
-		Xml_node _config;
+		Genode::Attached_rom_dataspace &_config_rom;
 
 		Module_list _modules;
 
@@ -78,7 +78,7 @@ struct Rom::Registry : Registry_for_reader, Registry_for_writer, Genode::Noncopy
 
 		void _try_to_destroy(Module const &module)
 		{
-			if (module._is_in_use())
+			if (module._in_use())
 				return;
 
 			_modules.remove(&module);
@@ -115,30 +115,38 @@ struct Rom::Registry : Registry_for_reader, Registry_for_writer, Genode::Noncopy
 		 */
 		Module::Name _report_name(Module::Name const &rom_label) const
 		{
+			using namespace Genode;
+
+			String<Rom::Module::Name::capacity()> report;
+
+			_config_rom.update();
 			try {
-				for (Xml_node node = _config.sub_node("policy");
-				     true; node = node.next("policy")) {
+				Session_policy policy(rom_label, _config_rom.xml());
+				policy.attribute("report").value(&report);
+				return Rom::Module::Name(report.string());
+			} catch (Session_policy::No_policy_defined) {
+				/* FIXME backwards compatibility, remove at next release */
+				try {
+					Xml_node rom_node = _config_rom.xml().sub_node("rom");
+					warning("parsing legacy <rom> policies");
 
-					if (!node.has_attribute("label")
-					 || !node.has_attribute("report")
-					 || !node.attribute("label").has_value(rom_label.string()))
-					 	continue;
+					Session_policy policy(rom_label, rom_node);
+					policy.attribute("report").value(&report);
+					return Rom::Module::Name(report.string());
+				} catch (Xml_node::Nonexistent_sub_node)    { /* no <rom> node */ }
+				  catch (Session_policy::No_policy_defined) { }
+			}
 
-					char report[Rom::Module::Name::capacity()];
-					node.attribute("report").value(report, sizeof(report));
-					return Rom::Module::Name(report);
-				}
-			} catch (Xml_node::Nonexistent_sub_node) { }
-
-			PWRN("no valid policy for label \"%s\"", rom_label.string());
+			warning("no valid policy for ROM request '", rom_label, "'");
 			throw Root::Invalid_args();
 		}
 
 	public:
 
-		Registry(Genode::Allocator &md_alloc, Xml_node config)
+		Registry(Genode::Allocator &md_alloc,
+		         Genode::Attached_rom_dataspace &config_rom)
 		:
-			_md_alloc(md_alloc), _config(config)
+			_md_alloc(md_alloc), _config_rom(config_rom)
 		{ }
 
 		Module &lookup(Writer &writer, Module::Name const &name) override

@@ -4,6 +4,13 @@
  * \date   2012-04-11
  */
 
+/*
+ * Copyright (C) 2012-2016 Genode Labs GmbH
+ *
+ * This file is part of the Genode OS framework, which is distributed
+ * under the terms of the GNU General Public License version 2.
+ */
+
 #ifndef _FILE_SYSTEM__UTIL_H_
 #define _FILE_SYSTEM__UTIL_H_
 
@@ -39,15 +46,26 @@ namespace File_system {
 
 
 	/**
-	 * Return true if specified path is a base name (contains no path delimiters)
+	 * Return true if specified path contains at least path delimiters
 	 */
-	static inline bool is_basename(char const *path)
+	static inline bool contains_path_delimiter(char const *path)
 	{
 		for (; *path; path++)
 			if (*path == '/')
-				return false;
+				return true;
 
-		return true;
+		return false;
+	}
+
+
+	/**
+	 * Return true if specified path is a base name (contains no path delimiters)
+	 *
+	 * \deprecated  use !contains_path_delimiter instead
+	 */
+	static inline bool is_basename(char const *path)
+	{
+		return !contains_path_delimiter(path);
 	}
 
 
@@ -78,7 +96,6 @@ namespace File_system {
 			} catch (Lookup_failed) {
 				Genode::Path<MAX_PATH_LEN> target(path);
 				target.strip_last_element();
-				target.remove_trailing('/');
 				fs.close(ensure_dir(fs, target.base()));
 			}
 		}
@@ -117,7 +134,8 @@ namespace File_system {
 
 			collect_acknowledgements(source);
 
-			size_t const curr_packet_size = min(remaining_count, max_packet_size);
+			size_t const curr_packet_size =
+				Genode::min(remaining_count, max_packet_size);
 
 			Packet_descriptor
 				packet(source.alloc_packet(curr_packet_size),
@@ -132,10 +150,11 @@ namespace File_system {
 			packet = source.get_acked_packet();
 			success = packet.succeeded();
 
-			size_t const read_num_bytes = min(packet.length(), curr_packet_size);
+			size_t const read_num_bytes =
+				Genode::min(packet.length(), curr_packet_size);
 
 			/* copy-out payload into destination buffer */
-			memcpy(dst, source.packet_content(packet), read_num_bytes);
+			Genode::memcpy(dst, source.packet_content(packet), read_num_bytes);
 
 			source.release_packet(packet);
 
@@ -173,7 +192,8 @@ namespace File_system {
 
 			collect_acknowledgements(source);
 
-			size_t const curr_packet_size = min(remaining_count, max_packet_size);
+			size_t const curr_packet_size =
+				Genode::min(remaining_count, max_packet_size);
 
 			Packet_descriptor
 				packet(source.alloc_packet(curr_packet_size),
@@ -183,7 +203,7 @@ namespace File_system {
 				       seek_offset);
 
 			/* copy-out source buffer into payload */
-			memcpy(source.packet_content(packet), src, curr_packet_size);
+			Genode::memcpy(source.packet_content(packet), src, curr_packet_size);
 
 			/* pass packet to server side */
 			source.submit_packet(packet);

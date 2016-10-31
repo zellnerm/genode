@@ -40,7 +40,7 @@ namespace Genode {
 	 */
 	inline bool map_local(addr_t from_addr, addr_t to_addr, size_t num_pages)
 	{
-		Native_thread_id core_pager = platform_specific()->core_pager()->native_thread_id();
+		Fiasco::l4_threadid_t core_pager = platform_specific()->core_pager()->native_thread_id();
 
 		addr_t offset = 0;
 		size_t page_size = get_page_size();
@@ -63,8 +63,9 @@ namespace Genode {
 			            L4_IPC_NEVER, &ipc_result);
 
 			if (L4_IPC_IS_ERROR(ipc_result)) {
-				PWRN("could not locally remap 0x%lx to 0x%lx, error code is %ld",
-				     from_addr, to_addr, L4_IPC_ERROR(ipc_result));
+				warning("could not locally remap ", Hex(from_addr), " "
+				        "to ", Hex(to_addr), ", "
+				        "error code is ", L4_IPC_ERROR(ipc_result));
 				return false;
 			}
 		}
@@ -79,9 +80,8 @@ namespace Genode {
 	 */
 	inline void unmap_local(addr_t virt, size_t num_pages)
 	{
-		PERR("unmap_local() called - not implemented yet");
+		error("unmap_local() called - not implemented yet");
 	}
 }
 
 #endif /* _CORE__INCLUDE__MAP_LOCAL_H_ */
-

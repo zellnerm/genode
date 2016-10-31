@@ -11,12 +11,11 @@
  * under the terms of the GNU General Public License version 2.
  */
 
-#ifndef _CORE__INCLUDE__LINUX__IO_MEM_SESSION_COMPONENT_H_
-#define _CORE__INCLUDE__LINUX__IO_MEM_SESSION_COMPONENT_H_
+#ifndef _CORE__INCLUDE__IO_MEM_SESSION_COMPONENT_H_
+#define _CORE__INCLUDE__IO_MEM_SESSION_COMPONENT_H_
 
 /* Genode includes */
 #include <base/allocator.h>
-#include <base/printf.h>
 #include <base/rpc_server.h>
 #include <io_mem_session/io_mem_session.h>
 
@@ -61,4 +60,4 @@ namespace Genode {
 	};
 }
 
-#endif /* _CORE__INCLUDE__LINUX__IO_MEM_SESSION_COMPONENT_H_ */
+#endif /* _CORE__INCLUDE__IO_MEM_SESSION_COMPONENT_H_ */

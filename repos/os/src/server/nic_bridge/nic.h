@@ -17,12 +17,9 @@
 #include <nic_session/connection.h>
 #include <nic/packet_allocator.h>
 
-#include "env.h"
-#include "packet_handler.h"
+#include <packet_handler.h>
 
-namespace Net {
-	class Nic;
-}
+namespace Net { class Nic; }
 
 
 class Net::Nic : public Net::Packet_handler
@@ -36,14 +33,14 @@ class Net::Nic : public Net::Packet_handler
 
 		::Nic::Packet_allocator     _tx_block_alloc;
 		::Nic::Connection           _nic;
-		Ethernet_frame::Mac_address _mac;
+		Mac_address _mac;
 
 	public:
 
-		Nic();
+		Nic(Genode::Entrypoint&, Genode::Heap&, Vlan&);
 
 		::Nic::Connection          *nic() { return &_nic; }
-		Ethernet_frame::Mac_address mac() { return _mac; }
+		Mac_address mac() { return _mac; }
 
 		bool link_state() { return _nic.link_state(); }
 

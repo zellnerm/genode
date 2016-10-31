@@ -28,7 +28,18 @@ namespace Launcher { struct Main; }
 
 struct Launcher::Main
 {
-	Server::Entrypoint _ep;
+	Server::Entrypoint &_ep;
+
+	Genode::Dataspace_capability _request_ldso_ds()
+	{
+		try {
+			static Genode::Rom_connection rom("ld.lib.so");
+			return rom.dataspace();
+		} catch (...) { }
+		return Genode::Dataspace_capability();
+	}
+
+	Genode::Dataspace_capability _ldso_ds = _request_ldso_ds();
 
 	Genode::Cap_connection _cap;
 
@@ -51,10 +62,6 @@ struct Launcher::Main
 	 */
 	Nitpicker::Connection _nitpicker;
 
-	Genode::Attached_dataspace _input_ds { _nitpicker.input()->dataspace() };
-
-	Input::Event const *_ev_buf() { return _input_ds.local_addr<Input::Event>(); }
-
 	Genode::Signal_rpc_member<Main> _input_dispatcher =
 		{ _ep, *this, &Main::_handle_input };
 
@@ -65,16 +72,18 @@ struct Launcher::Main
 	Genode::Signal_rpc_member<Main> _exited_child_dispatcher =
 		{ _ep, *this, &Main::_handle_exited_child };
 
-	Subsystem_manager _subsystem_manager { _ep, _cap, _exited_child_dispatcher };
+	Subsystem_manager _subsystem_manager { _ep, _cap, _exited_child_dispatcher,
+	                                       _ldso_ds };
 
-	Panel_dialog _panel_dialog { _ep, _cap, *env()->ram_session(), *env()->heap(),
+	Panel_dialog _panel_dialog { _ep, _cap, *env()->ram_session(), _ldso_ds,
+	                             *env()->heap(),
 	                             _report_rom_slave, _subsystem_manager, _nitpicker };
 
 	void _handle_config(unsigned);
 
 	void _handle_exited_child(unsigned)
 	{
-		auto kill_child_fn = [&] (Child_base::Label label) { _panel_dialog.kill(label); };
+		auto kill_child_fn = [&] (Label const &label) { _panel_dialog.kill(label); };
 
 		_subsystem_manager.for_each_exited_child(kill_child_fn);
 	}
@@ -115,12 +124,7 @@ void Launcher::Main::_handle_config(unsigned)
 
 void Launcher::Main::_handle_input(unsigned)
 {
-	unsigned const num_ev = _nitpicker.input()->flush();
-
-	for (unsigned i = 0; i < num_ev; i++) {
-
-		Input::Event const &e = _ev_buf()[i];
-
+	_nitpicker.input()->for_each_event([&] (Input::Event const &e) {
 		if (e.type() == Input::Event::PRESS)   _key_cnt++;
 		if (e.type() == Input::Event::RELEASE) _key_cnt--;
 
@@ -135,7 +139,7 @@ void Launcher::Main::_handle_input(unsigned)
 			if (e.keycode() == Input::KEY_TAB)
 				_panel_dialog.focus_next();
 		}
-	}
+	});
 }
 
 
@@ -167,7 +171,7 @@ void Launcher::Main::_handle_focus_update(unsigned)
 		_panel_dialog.focus_changed(label);
 
 	} catch (...) {
-		PWRN("no focus model available");
+		Genode::warning("no focus model available");
 	}
 }
 
@@ -184,12 +188,6 @@ namespace Server {
 
 	void construct(Entrypoint &ep)
 	{
-		/* look for dynamic linker */
-		try {
-			static Rom_connection rom("ld.lib.so");
-			Process::dynamic_linker(rom.dataspace());
-		} catch (...) { }
-
 		static Launcher::Main desktop(ep);
 	}
 }

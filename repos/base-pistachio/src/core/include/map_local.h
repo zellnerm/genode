@@ -42,7 +42,7 @@ namespace Genode {
 	inline static bool map_local(addr_t from_addr, addr_t to_addr, size_t num_pages)
 	{
 
-		Native_thread_id core_pager = platform_specific()->core_pager()->native_thread_id();
+		Pistachio::L4_ThreadId_t core_pager = platform_specific()->core_pager()->native_thread_id();
 
 		addr_t offset = 0;
 		size_t page_size = get_page_size();
@@ -70,8 +70,8 @@ namespace Genode {
 
 			L4_MsgTag_t result = L4_Call(core_pager);
 			if (L4_IpcFailed(result)) {
-				PWRN("could not locally remap 0x%lx to 0x%lx, error code is %ld",
-				     from_addr, to_addr, L4_ErrorCode());
+				warning("could not locally remap ", (void*)from_addr, " to ",
+				        (void*)to_addr, ", error code is ", L4_ErrorCode());
 				return false;
 			}
 		}
@@ -98,4 +98,3 @@ namespace Genode {
 }
 
 #endif /* _CORE__INCLUDE__MAP_LOCAL_H_ */
-

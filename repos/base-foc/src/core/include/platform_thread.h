@@ -16,13 +16,12 @@
 #define _CORE__INCLUDE__PLATFORM_THREAD_H_
 
 /* Genode includes */
-#include <base/native_types.h>
+#include <base/native_capability.h>
 #include <base/thread_state.h>
 
 /* core includes */
 #include <pager.h>
 #include <platform_pd.h>
-#include <cap_session_component.h>
 #include <cap_mapping.h>
 #include <address_space.h>
 
@@ -43,7 +42,7 @@ namespace Genode {
 			Cap_mapping        _gate;
 			Cap_mapping        _pager;
 			Cap_mapping        _irq;
-			Native_utcb        _utcb;
+			addr_t             _utcb;
 			char               _name[32];       /* thread name that will be
 			                                      registered at the kernel
 			                                      debugger */
@@ -65,7 +64,8 @@ namespace Genode {
 			/**
 			 * Constructor for non-core threads
 			 */
-			Platform_thread(const char *name, unsigned priority, addr_t);
+			Platform_thread(size_t, const char *name, unsigned priority,
+			                Affinity::Location, addr_t);
 
 			/**
 			 * Constructor for core main-thread
@@ -98,6 +98,11 @@ namespace Genode {
 			 * Pause this thread
 			 */
 			void pause();
+
+			/**
+			 * Enable/disable single stepping
+			 */
+			void single_step(bool);
 
 			/**
 			 * Resume this thread
@@ -165,7 +170,7 @@ namespace Genode {
 			 * Return identification of thread when faulting
 			 */
 			unsigned long pager_object_badge() {
-				return (unsigned long) _thread.local.dst(); }
+				return (unsigned long) _thread.local.data()->kcap(); }
 
 			/**
 			 * Set CPU quota of the thread to 'quota'
@@ -182,11 +187,11 @@ namespace Genode {
 			 ** Fiasco-specific Accessors **
 			 *******************************/
 
-			Cap_mapping& thread()            { return _thread;      }
-			Cap_mapping& gate()              { return _gate;        }
-			const char  *name()        const { return _name;        }
-			bool         core_thread() const { return _core_thread; }
-			Native_utcb  utcb()        const { return _utcb;        }
+			Cap_mapping const & thread()      const { return _thread;      }
+			Cap_mapping       & gate()              { return _gate;        }
+			const char         *name()        const { return _name;        }
+			bool                core_thread() const { return _core_thread; }
+			addr_t              utcb()        const { return _utcb;        }
 	};
 }
 

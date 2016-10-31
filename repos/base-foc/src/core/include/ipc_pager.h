@@ -19,9 +19,13 @@
 #include <base/cache.h>
 #include <base/ipc.h>
 #include <base/stdint.h>
-#include <base/native_types.h>
+#include <base/native_capability.h>
 #include <base/thread_state.h>
 #include <util/touch.h>
+#include <foc/native_capability.h>
+
+/* base-internal includes */
+#include <base/internal/native_thread.h>
 
 /* Fiasco includes */
 namespace Fiasco {
@@ -169,12 +173,12 @@ namespace Genode {
 			 */
 			unsigned long badge() { return _badge; }
 
-			bool is_write_fault() const { return (_pf_addr & 2); }
+			bool write_fault() const { return (_pf_addr & 2); }
 
 			/**
 			 * Return true if last fault was an exception
 			 */
-			bool is_exception() const
+			bool exception() const
 			{
 				return _type == Ipc_pager::EXCEPTION;
 			}

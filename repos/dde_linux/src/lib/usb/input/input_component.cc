@@ -13,16 +13,13 @@
  * under the terms of the GNU General Public License version 2.
  */
 
-#include <base/printf.h>
 #include <base/rpc_server.h>
 #include <input/root.h>
 #include <os/ring_buffer.h>
 
-#include <extern_c_begin.h>
 #include <lx_emul.h>
-#include <extern_c_end.h>
-
 #include "platform.h"
+
 #undef RELEASE
 
 using namespace Genode;
@@ -79,8 +76,9 @@ void start_input_service(void *ep_ptr, void * service_ptr)
 {
 	Rpc_entrypoint *ep = static_cast<Rpc_entrypoint *>(ep_ptr);
 	Services *service = static_cast<Services *>(service_ptr);
+	Env &env = service->env;
 
-	env()->parent()->announce(ep->manage(&input_root(ep)));
+	env.parent().announce(ep->manage(&input_root(ep)));
 
 	genode_input_register(input_callback, service->screen_width,
 	                      service->screen_height, service->multitouch);

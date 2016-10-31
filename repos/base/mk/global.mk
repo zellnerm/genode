@@ -118,6 +118,16 @@ CC_C_OPT   += $(CC_OPT)
 CC_ADA_OPT += $(CC_OLEVEL) $(CC_WARN)
 
 #
+# Use the correct linker
+#
+CC_RUSTC_OPT += -C linker=$(LD)
+
+#
+# Include dependencies
+#
+CC_RUSTC_OPT += $(foreach lib,$(LIBS),-L$(LIB_CACHE_DIR)/$(lib))
+
+#
 # Enable C++11 by default
 #
 CC_CXX_OPT_STD ?= -std=gnu++11
@@ -144,12 +154,12 @@ CXX_LINK_OPT       += $(LD_OPT_NOSTDLIB)
 #
 # Linker script for dynamically linked programs
 #
-LD_SCRIPT_DYN = $(call select_from_repositories,src/ld/genode_dyn.ld)
+LD_SCRIPT_DYN = $(BASE_DIR)/src/ld/genode_dyn.ld
 
 #
 # Linker script for shared libraries
 #
-LD_SCRIPT_SO ?= $(call select_from_repositories,src/ld/genode_rel.ld)
+LD_SCRIPT_SO ?= $(BASE_DIR)/src/ld/genode_rel.ld
 
 #
 # Assembler options
@@ -181,6 +191,7 @@ VERBOSE_DIR ?= --no-print-directory
 MSG_LINK     = @$(ECHO) "    LINK     "
 MSG_COMP     = @$(ECHO) "    COMPILE  "
 MSG_BUILD    = @$(ECHO) "    BUILD    "
+MSG_RENAME   = @$(ECHO) "    RENAME   "
 MSG_MERGE    = @$(ECHO) "    MERGE    "
 MSG_CONVERT  = @$(ECHO) "    CONVERT  "
 MSG_CONFIG   = @$(ECHO) "    CONFIG   "

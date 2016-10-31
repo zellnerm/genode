@@ -5,17 +5,21 @@
  */
 
 /*
- * Copyright (C) 2015 Genode Labs GmbH
+ * Copyright (C) 2015-2016 Genode Labs GmbH
  *
  * This file is part of the Genode OS framework, which is distributed
  * under the terms of the GNU General Public License version 2.
  */
 
+/* Linux kit includes */
+#include <lx_kit/scheduler.h>
+
+
 void prepare_to_wait(wait_queue_head_t *q, wait_queue_t *w, int state)
 {
 	if (!q) {
-		PWRN("prepare_to_wait: wait_queue_head_t is 0, ignore, called from: %p",
-		    __builtin_return_address(0));
+		Genode::warning("prepare_to_wait: wait_queue_head_t is 0, ignore, "
+		                "called from: ", __builtin_return_address(0));
 		return;
 	}
 
@@ -35,8 +39,8 @@ void prepare_to_wait_exclusive(wait_queue_head_t *q, wait_queue_t *w, int state)
 void finish_wait(wait_queue_head_t *q, wait_queue_t *w)
 {
 	if (!q) {
-		PWRN("finish_wait: wait_queue_head_t is 0, ignore, called from: %p",
-		    __builtin_return_address(0));
+		Genode::warning("finish_wait: wait_queue_head_t is 0, ignore, ",
+		                "called from: ", __builtin_return_address(0));
 		return;
 	}
 

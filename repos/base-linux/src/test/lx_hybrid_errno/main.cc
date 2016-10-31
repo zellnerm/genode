@@ -5,22 +5,24 @@
  */
 
 /* Genode includes */
+#include <base/component.h>
 #include <base/thread.h>
-#include <base/printf.h>
+#include <base/log.h>
 
 /* libc includes */
 #include <sys/stat.h>
 #include <unistd.h>
 #include <errno.h>
+#include <stdlib.h>
 
 enum { STACK_SIZE = 4096 };
 
-struct Thread : Genode::Thread<STACK_SIZE>
+struct Thread : Genode::Thread_deprecated<STACK_SIZE>
 {
 	Genode::Lock &_barrier;
 
 	Thread(Genode::Lock &barrier)
-	: Genode::Thread<STACK_SIZE>("stat"), _barrier(barrier) { start(); }
+	: Genode::Thread_deprecated<STACK_SIZE>("stat"), _barrier(barrier) { start(); }
 
 	void entry()
 	{
@@ -30,7 +32,7 @@ struct Thread : Genode::Thread<STACK_SIZE>
 		struct stat buf;
 		int ret = stat("", &buf);
 
-		Genode::printf("thread: stat returned %d, errno=%d\n", ret, errno);
+		Genode::log("thread: stat returned ", ret, ", errno=", errno);
 
 		/*
 		 * Let main thread procees
@@ -40,15 +42,27 @@ struct Thread : Genode::Thread<STACK_SIZE>
 };
 
 
-int main(int, char **)
+static int exit_status;
+static void exit_on_suspended() { exit(exit_status); }
+
+
+Genode::size_t Component::stack_size() { return 16*1024*sizeof(long); }
+
+
+struct Unexpected_errno_change { };
+
+/*
+ * Component implements classical main function in construct.
+ */
+void Component::construct(Genode::Env &env)
 {
-	Genode::printf("--- thread-local errno test ---\n");
+	Genode::log("--- thread-local errno test ---");
 
 	static Genode::Lock barrier(Genode::Lock::LOCKED);
 
 	int const orig_errno = errno;
 
-	Genode::printf("main: before thread creation, errno=%d\n", orig_errno);
+	Genode::log("main: before thread creation, errno=", orig_errno);
 
 	/* create thread, which modifies its thread-local errno value */
 	static Thread thread(barrier);
@@ -56,13 +70,14 @@ int main(int, char **)
 	/* block until the thread performed a 'stat' syscall */
 	barrier.lock();
 
-	Genode::printf("main: after thread completed, errno=%d\n", errno);
+	Genode::log("main: after thread completed, errno=", errno);
 
 	if (orig_errno != errno) {
-		PERR("unexpected change of main thread's errno value");
-		return -1;
+		Genode::error("unexpected change of main thread's errno value");
+		throw Unexpected_errno_change();
 	}
 
-	Genode::printf("--- finished thread-local errno test ---\n");
-	return 0;
+	Genode::log("--- finished thread-local errno test ---");
+	exit_status = 0;
+	env.ep().schedule_suspend(exit_on_suspended, nullptr);
 }

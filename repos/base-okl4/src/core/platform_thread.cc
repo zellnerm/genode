@@ -14,7 +14,7 @@
  */
 
 /* Genode includes */
-#include <base/printf.h>
+#include <base/log.h>
 #include <util/string.h>
 #include <util/misc_math.h>
 
@@ -22,6 +22,9 @@
 #include <platform.h>
 #include <platform_pd.h>
 #include <platform_thread.h>
+
+/* base-internal includes */
+#include <base/internal/capability_space_tpl.h>
 
 /* OKL4 includes */
 namespace Okl4 { extern "C" {
@@ -39,7 +42,7 @@ using namespace Okl4;
 int Platform_thread::start(void *ip, void *sp, unsigned int cpu_no)
 {
 	if (!_platform_pd) {
-		PWRN("thread %d is not bound to a PD", _thread_id);
+		warning("thread ", _thread_id, " is not bound to a PD");
 		return -1;
 	}
 
@@ -49,7 +52,11 @@ int Platform_thread::start(void *ip, void *sp, unsigned int cpu_no)
 	                                                            _thread_id);
 	L4_SpaceId_t  space_id           = L4_SpaceId(space_no);
 	L4_ThreadId_t scheduler          = L4_rootserver;
-	L4_ThreadId_t pager              = _pager ? _pager->cap().dst() : L4_nilthread;
+
+	L4_ThreadId_t pager  = _pager
+	                     ? Capability_space::ipc_cap_data(_pager->cap()).dst
+	                     : L4_nilthread;
+
 	L4_ThreadId_t exception_handler  = pager;
 	L4_Word_t     resources          = 0;
 	L4_Word_t     utcb_size_per_task = L4_GetUtcbSize()*(1 << Thread_id_bits::THREAD);
@@ -81,8 +88,7 @@ int Platform_thread::start(void *ip, void *sp, unsigned int cpu_no)
 	                           scheduler, pager, exception_handler,
 	                           resources, (void *)utcb_location);
 	if (ret != 1) {
-		PERR("L4_ThreadControl returned %d, error code=%d",
-		     ret, (int)L4_ErrorCode());
+		error("L4_ThreadControl returned ", ret, ", error=", ret, L4_ErrorCode());
 		return -1;
 	}
 
@@ -103,7 +109,7 @@ int Platform_thread::start(void *ip, void *sp, unsigned int cpu_no)
 	/* assign priority */
 	if (!L4_Set_Priority(new_thread_id,
 	                     Cpu_session::scale_priority(DEFAULT_PRIORITY, _priority)))
-		PWRN("Could not set thread prioritry to default");
+		warning("could not set thread prioritry to default");
 
 	set_l4_thread_id(new_thread_id);
 	return 0;
@@ -137,7 +143,7 @@ void Platform_thread::unbind()
 	                                 L4_nilthread, L4_nilthread, L4_nilthread, ~0, 0);
 
 	if (res != 1)
-		PERR("Deleting thread 0x%08lx failed. Continuing...", _l4_thread_id.raw);
+		error("deleting thread ", Hex(_l4_thread_id.raw), " failed");
 
 	_thread_id    = THREAD_INVALID;
 	_l4_thread_id = L4_nilthread;
@@ -178,7 +184,8 @@ Weak_ptr<Address_space> Platform_thread::address_space()
 }
 
 
-Platform_thread::Platform_thread(size_t, const char *name, unsigned prio, addr_t, int thread_id)
+Platform_thread::Platform_thread(size_t, const char *name, unsigned prio,
+                                 Affinity::Location, addr_t, int thread_id)
 : _thread_id(thread_id), _l4_thread_id(L4_nilthread), _platform_pd(0),
   _priority(prio), _pager(0)
 {

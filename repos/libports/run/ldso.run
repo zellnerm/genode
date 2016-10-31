@@ -1,8 +1,8 @@
-build "core init test/ldso test/ldso/dl"
+build "core init test/ldso"
 
 create_boot_directory
 
-install_config {
+set config {
 	<config>
 		<parent-provides>
 			<service name="ROM"/>
@@ -23,6 +23,8 @@ install_config {
 	</config>
 }
 
+install_config $config
+
 set boot_modules {
 	core init test-ldso test-ldso_lib_1.lib.so
 	test-ldso_lib_2.lib.so test-ldso_lib_dl.lib.so
@@ -37,6 +39,8 @@ run_genode_until {child ".*" exited with exit value 123.*\n} 10
 
 # pay only attention to the output of init and its children
 grep_output {^\[init }
+unify_output {\[init \-\> test\-ldso\] upgrading quota donation for .* \([0-9]+ bytes\)} ""
+trim_lines
 
 compare_output_to {
 [init -> test-ldso] Lib_2_global 11223343
@@ -70,13 +74,13 @@ compare_output_to {
 [init -> test-ldso] lib_1_local_3 12345676
 [init -> test-ldso] lib_1_pod_1 8070604d
 [init -> test-ldso] Libc::read:
-[init -> test-ldso] no plugin found for read(0)
+[init -> test-ldso] Error: no plugin found for read(0)
 [init -> test-ldso] Libc::abs(-10): 10
 [init -> test-ldso] 
 [init -> test-ldso] Catch exceptions in program
 [init -> test-ldso] ---------------------------
 [init -> test-ldso] exception in remote procedure call:
-[init -> test-ldso] Could not open ROM session for module "unknown_file"
+[init -> test-ldso] Error: Could not open ROM session for "unknown_file"
 [init -> test-ldso] caught
 [init -> test-ldso] exception in program: caught
 [init -> test-ldso] exception in shared lib: caught

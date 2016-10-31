@@ -15,17 +15,22 @@
 #define _CORE__INCLUDE__PAGER_H_
 
 /* Genode includes */
+#include <base/session_label.h>
 #include <base/thread.h>
 #include <base/object_pool.h>
 #include <base/signal.h>
 #include <pager/capability.h>
-#include <unmanaged_singleton.h>
+
+/* base-internal includes */
+#include <base/internal/unmanaged_singleton.h>
+
+/* core-local includes */
 #include <kernel/signal_receiver.h>
 #include <object.h>
+#include <rpc_cap_factory.h>
 
 namespace Genode
 {
-	class Cap_session;
 
 	/**
 	 * Translation of a virtual page frame
@@ -109,7 +114,7 @@ class Genode::Ipc_pager
 		/**
 		 * Access direction of current page fault
 		 */
-		bool is_write_fault() const;
+		bool write_fault() const;
 
 		/**
 		 * Input mapping data as reply to current page fault
@@ -117,16 +122,17 @@ class Genode::Ipc_pager
 		void set_reply_mapping(Mapping m);
 };
 
-class Genode::Pager_object
-: public Object_pool<Pager_object>::Entry,
-  public Genode::Kernel_object<Kernel::Signal_context>
+
+class Genode::Pager_object : public Object_pool<Pager_object>::Entry,
+                             public Genode::Kernel_object<Kernel::Signal_context>
 {
 	friend class Pager_entrypoint;
 
 	private:
 
-		Thread_capability   _thread_cap;
-		unsigned long const _badge;
+		unsigned long    const _badge;
+		Cpu_session_capability _cpu_session_cap;
+		Thread_capability      _thread_cap;
 
 	public:
 
@@ -135,7 +141,10 @@ class Genode::Pager_object
 		 *
 		 * \param badge  user identifaction of pager object
 		 */
-		Pager_object(unsigned const badge, Affinity::Location);
+		Pager_object(Cpu_session_capability cpu_session_cap,
+		             Thread_capability thread_cap, unsigned const badge,
+		             Affinity::Location, Session_label const&,
+		             Cpu_session::Name const&);
 
 		/**
 		 * User identification of pager object
@@ -164,6 +173,8 @@ class Genode::Pager_object
 		 */
 		void unresolved_page_fault_occurred();
 
+		void print(Output &out) const;
+
 
 		/******************
 		 ** Pure virtual **
@@ -184,14 +195,13 @@ class Genode::Pager_object
 		 ** Accessors **
 		 ***************/
 
-		Thread_capability thread_cap() const;
-
-		void thread_cap(Thread_capability const & c);
+		Cpu_session_capability cpu_session_cap() const { return _cpu_session_cap; }
+		Thread_capability      thread_cap()      const { return _thread_cap; }
 };
 
 
 class Genode::Pager_entrypoint : public Object_pool<Pager_object>,
-                                 public Thread<PAGER_EP_STACK_SIZE>,
+                                 public Thread_deprecated<PAGER_EP_STACK_SIZE>,
                                  public Kernel_object<Kernel::Signal_receiver>,
                                  public Ipc_pager
 {
@@ -199,10 +209,8 @@ class Genode::Pager_entrypoint : public Object_pool<Pager_object>,
 
 		/**
 		 * Constructor
-		 *
-		 * \param a  activation that shall handle the objects of the entrypoint
 		 */
-		Pager_entrypoint(Cap_session * cap_session);
+		Pager_entrypoint(Rpc_cap_factory &);
 
 		/**
 		 * Associate pager object 'obj' with entry point

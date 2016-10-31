@@ -5,7 +5,7 @@
  */
 
 /*
- * Copyright (C) 2011-2014 Genode Labs GmbH
+ * Copyright (C) 2011-2016 Genode Labs GmbH
  *
  * This file is part of the Genode OS framework, which is distributed
  * under the terms of the GNU General Public License version 2.
@@ -23,8 +23,6 @@ namespace Vfs { class Tar_file_system; }
 
 class Vfs::Tar_file_system : public File_system
 {
-	enum { verbose = false };
-
 	struct Rom_name
 	{
 		enum { ROM_NAME_MAX_LEN = 64 };
@@ -102,8 +100,8 @@ class Vfs::Tar_file_system : public File_system
 
 		public:
 
-			Tar_vfs_handle(File_system &fs, int status_flags, Record const *record)
-			: Vfs_handle(fs, fs, status_flags), _record(record)
+			Tar_vfs_handle(File_system &fs, Allocator &alloc, int status_flags, Record const *record)
+			: Vfs_handle(fs, fs, alloc, status_flags), _record(record)
 			{ }
 
 			Record const *record() const { return _record; }
@@ -133,9 +131,6 @@ class Vfs::Tar_file_system : public File_system
 		{
 			Absolute_path lookup_path(name);
 
-			if (verbose)
-				PDBG("lookup_path = %s", lookup_path.base());
-
 			Node *parent_node = this;
 			Node *child_node;
 
@@ -152,15 +147,8 @@ class Vfs::Tar_file_system : public File_system
 
 				t.string(path_element, sizeof(path_element));
 
-				if (verbose)
-					PDBG("path_element = %s", path_element);
-
 				for (child_node = parent_node->first(); child_node; child_node = child_node->next()) {
-					if (verbose)
-						PDBG("comparing with node %s", child_node->name);
 					if (strcmp(child_node->name, path_element) == 0) {
-						if (verbose)
-							PDBG("found matching child node");
 						parent_node = child_node;
 						break;
 					}
@@ -176,9 +164,9 @@ class Vfs::Tar_file_system : public File_system
 		}
 
 
-		Node *lookup_child(int index)
+		Node const *lookup_child(int index) const
 		{
-			for (Node *child_node = first(); child_node; child_node = child_node->next(), index--) {
+			for (Node const *child_node = first(); child_node; child_node = child_node->next(), index--) {
 				if (index == 0)
 					return child_node;
 			}
@@ -214,9 +202,6 @@ class Vfs::Tar_file_system : public File_system
 			{
 				Absolute_path current_path(record->name());
 
-				if (verbose)
-					PDBG("current_path = %s", current_path.base());
-
 				char path_element[MAX_PATH_LEN];
 
 				Path_element_token t(current_path.base());
@@ -242,9 +227,6 @@ class Vfs::Tar_file_system : public File_system
 
 					if (child_node) {
 
-						if (verbose)
-							PDBG("found node for %s", path_element);
-
 						if (remaining_path.has_single_element()) {
 							/* Found a node for the record to be inserted.
 							 * This is usually a directory node without
@@ -253,9 +235,6 @@ class Vfs::Tar_file_system : public File_system
 						}
 					} else {
 						if (remaining_path.has_single_element()) {
-
-							if (verbose)
-								PDBG("creating node for %s", path_element);
 
 							/*
 							 * TODO: find 'path_element' in 'record->name'
@@ -267,9 +246,6 @@ class Vfs::Tar_file_system : public File_system
 							strncpy(name, path_element, name_size);
 							child_node = new (env()->heap()) Node(name, record);
 						} else {
-
-							if (verbose)
-								PDBG("creating node without record for %s", path_element);
 
 							/* create a directory node without record */
 							Genode::size_t name_size = strlen(path_element) + 1;
@@ -376,8 +352,8 @@ class Vfs::Tar_file_system : public File_system
 			_root_node("", 0),
 			_cached_num_dirent(_root_node)
 		{
-			PINF("tar archive '%s' local at %p, size is %llu",
-			     _rom_name.name, _tar_base, _tar_size);
+			Genode::log("tar archive '", Genode::Cstring(_rom_name.name), "' "
+			            "local at ", (void *)_tar_base, ", size is ", _tar_size);
 
 			_for_each_tar_record_do(Add_node_action(_root_node));
 		}
@@ -395,8 +371,8 @@ class Vfs::Tar_file_system : public File_system
 
 			Record const *record = node->record;
 			if (record->type() != Record::TYPE_FILE) {
-				PERR("TAR record \"%s\" has unsupported type %d",
-				     path, record->type());
+				Genode::error("TAR record \"", path, "\" has "
+				              "unsupported type ", record->type());
 				return Dataspace_capability();
 			}
 
@@ -410,7 +386,7 @@ class Vfs::Tar_file_system : public File_system
 
 				return ds_cap;
 			}
-			catch (...) { PDBG("Could not create new dataspace"); }
+			catch (...) { Genode::warning(__func__, " could not create new dataspace"); }
 
 			return Dataspace_capability();
 		}
@@ -422,18 +398,13 @@ class Vfs::Tar_file_system : public File_system
 
 		Stat_result stat(char const *path, Stat &out) override
 		{
-			if (verbose)
-				PDBG("path = %s", path);
+			out = Stat();
 
 			Node const *node = dereference(path);
 			if (!node)
 				return STAT_ERR_NO_ENTRY;
 
 			if (!node->record) {
-				if (verbose)
-					PDBG("found a virtual directoty node");
-
-				memset(&out, 0, sizeof(out));
 				out.mode = STAT_MODE_DIRECTORY;
 				return STAT_OK;
 			}
@@ -447,24 +418,22 @@ class Vfs::Tar_file_system : public File_system
 			case Record::TYPE_SYMLINK:  mode |= STAT_MODE_SYMLINK; break;
 			case Record::TYPE_DIR:      mode |= STAT_MODE_DIRECTORY; break;
 
-			default:
-				if (verbose)
-					PDBG("unhandled record type %d", record->type());
+			default: break;
 			}
 
-			memset(&out, 0, sizeof(out));
 			out.mode  = mode;
 			out.size  = record->size();
 			out.uid   = record->uid();
 			out.gid   = record->gid();
-			out.inode = (unsigned long)node;
+			out.inode = (Genode::addr_t)node;
+			out.device = (Genode::addr_t)this;
 
 			return STAT_OK;
 		}
 
 		Dirent_result dirent(char const *path, file_offset index, Dirent &out) override
 		{
-			Node *node = _root_node.lookup(path);
+			Node const *node = dereference(path);
 
 			if (!node)
 				return DIRENT_ERR_INVALID_PATH;
@@ -476,20 +445,31 @@ class Vfs::Tar_file_system : public File_system
 				return DIRENT_OK;
 			}
 
-			out.fileno = (unsigned long)node;
+			out.fileno = (Genode::addr_t)node;
 
 			Record const *record = node->record;
 
+			while (record && (record->type() == Record::TYPE_HARDLINK)) {
+				Node const *target = dereference(record->linked_name());
+				record = target ? target->record : 0;
+			}
+
 			if (record) {
 				switch (record->type()) {
-				case 0: out.type = DIRENT_TYPE_FILE;      break;
-				case 2: out.type = DIRENT_TYPE_SYMLINK;   break;
-				case 5: out.type = DIRENT_TYPE_DIRECTORY; break;
+				case Record::TYPE_FILE:
+					out.type = DIRENT_TYPE_FILE;      break;
+				case Record::TYPE_SYMLINK:
+					out.type = DIRENT_TYPE_SYMLINK;   break;
+				case Record::TYPE_DIR:
+					out.type = DIRENT_TYPE_DIRECTORY; break;
 
 				default:
-					if (verbose)
-						PDBG("unhandled record type %d", record->type());
+					Genode::error("unhandled record type ", record->type(), " "
+					              "for ", node->name);
 				}
+			} else {
+				/* If no record exists, assume it is a directory */
+				out.type = DIRENT_TYPE_DIRECTORY;
 			}
 
 			strncpy(out.name, node->name, sizeof(out.name));
@@ -497,12 +477,19 @@ class Vfs::Tar_file_system : public File_system
 			return DIRENT_OK;
 		}
 
-		Unlink_result unlink(char const *) override { return UNLINK_ERR_NO_PERM; }
+		Unlink_result unlink(char const *path) override
+		{
+			Node const *node = dereference(path);
+			if (!node)
+				return UNLINK_ERR_NO_ENTRY;
+			else
+				return UNLINK_ERR_NO_PERM;
+		}
 
 		Readlink_result readlink(char const *path, char *buf, file_size buf_size,
 		                         file_size &out_len) override
 		{
-			Node *node = _root_node.lookup(path);
+			Node const *node = dereference(path);
 			Record const *record = node ? node->record : 0;
 
 			if (!record || (record->type() != Record::TYPE_SYMLINK))
@@ -517,9 +504,11 @@ class Vfs::Tar_file_system : public File_system
 			return READLINK_OK;
 		}
 
-		Rename_result rename(char const *, char const *) override
+		Rename_result rename(char const *from, char const *to) override
 		{
-			return RENAME_ERR_NO_PERM;
+			if (_root_node.lookup(from) || _root_node.lookup(to))
+				return RENAME_ERR_NO_PERM;
+			return RENAME_ERR_NO_ENTRY;
 		}
 
 		Mkdir_result mkdir(char const *, unsigned) override
@@ -537,9 +526,9 @@ class Vfs::Tar_file_system : public File_system
 			return _cached_num_dirent.num_dirent(path);
 		}
 
-		bool is_directory(char const *path) override
+		bool directory(char const *path) override
 		{
-			Node *node = _root_node.lookup(path);
+			Node const *node = dereference(path);
 
 			if (!node)
 				return false;
@@ -560,16 +549,24 @@ class Vfs::Tar_file_system : public File_system
 			return node ? path : 0;
 		}
 
-		Open_result open(char const *path, unsigned, Vfs_handle **out_handle) override
+		Open_result open(char const *path, unsigned, Vfs_handle **out_handle, Genode::Allocator& alloc) override
 		{
 			Node const *node = dereference(path);
 			if (!node || !node->record || node->record->type() != Record::TYPE_FILE)
 				return OPEN_ERR_UNACCESSIBLE;
 
-			*out_handle = new (env()->heap())
-				Tar_vfs_handle(*this, 0, node->record);
+			*out_handle = new (alloc) Tar_vfs_handle(*this, alloc, 0, node->record);
 
 			return OPEN_OK;
+		}
+
+		void close(Vfs_handle *vfs_handle) override
+		{
+			Tar_vfs_handle *tar_handle =
+				static_cast<Tar_vfs_handle *>(vfs_handle);
+
+			if (tar_handle)
+				destroy(vfs_handle->alloc(), tar_handle);
 		}
 
 
@@ -587,7 +584,6 @@ class Vfs::Tar_file_system : public File_system
 		Write_result write(Vfs_handle *, char const *, file_size,
 		                   file_size &) override
 		{
-			PDBG("called\n");
 			return WRITE_ERR_INVALID;
 		}
 
@@ -613,7 +609,6 @@ class Vfs::Tar_file_system : public File_system
 
 		Ftruncate_result ftruncate(Vfs_handle *handle, file_size) override
 		{
-			PDBG("called\n");
 			return FTRUNCATE_ERR_NO_PERM;
 		}
 };

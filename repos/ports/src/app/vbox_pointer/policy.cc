@@ -61,7 +61,7 @@ class Vbox_pointer::Policy_entry : public Vbox_pointer::Policy,
 
 			_shape_ds.update();
 
-			if (!_shape_ds.is_valid())
+			if (!_shape_ds.valid())
 				return;
 
 			if (_shape_ds.size() < sizeof(Vbox_pointer::Shape_report))
@@ -194,9 +194,9 @@ void Vbox_pointer::Policy_registry::update(Genode::Xml_node config)
 			String rom    = read_string_attribute(policy, "rom",    String());
 
 			if (!label.valid() && !domain.valid())
-				PWRN("policy does not declare label/domain attribute");
+				Genode::warning("policy does not declare label/domain attribute");
 			else if (!rom.valid())
-				PWRN("policy does not declare shape rom");
+				Genode::warning("policy does not declare shape rom");
 			else
 				insert(new (Genode::env()->heap())
 				       Policy_entry(label, domain, rom, _updater));

@@ -58,11 +58,15 @@ namespace Sd_card {
 		struct Busy : Bitfield<31, 1> { };
 	};
 
-	struct Cid {
-		uint32_t raw_0;
-		uint32_t raw_1;
-		uint32_t raw_2;
-		uint32_t raw_3;
+	struct Cid
+	{
+		uint32_t raw_0, raw_1, raw_2, raw_3;
+
+		void print(Output &out) const
+		{
+			Genode::print(out, Hex(raw_3), " ", Hex(raw_2), " ",
+			                   Hex(raw_1), " ", Hex(raw_0));
+		}
 	};
 
 	struct Csd0 : Register<32>
@@ -95,7 +99,7 @@ namespace Sd_card {
 
 		struct Version : Bitfield<126 - BIT_BASE, 2>
 		{
-			enum { STANDARD_CAPACITY = 0, HIGH_CAPACITY = 1, EXT_CSD = 3 };
+			enum Type { STANDARD_CAPACITY = 0, HIGH_CAPACITY = 1, EXT_CSD = 3 };
 		};
 
 		struct Mmc_spec_vers : Bitfield<122 - BIT_BASE, 4> { };
@@ -138,6 +142,18 @@ namespace Sd_card {
 		:
 			index(op), arg(0), rsp_type(rsp_type), transfer(transfer)
 		{ }
+
+		void print(Output &out) const
+		{
+			using Genode::print;
+			print(out, "index=", index, ", arg=", arg, ", rsp_type=");
+			switch (rsp_type) {
+			case RESPONSE_NONE:             print(out, "NONE");             break;
+			case RESPONSE_136_BIT:          print(out, "136_BIT");          break;
+			case RESPONSE_48_BIT:           print(out, "48_BIT");           break;
+			case RESPONSE_48_BIT_WITH_BUSY: print(out, "48_BIT_WITH_BUSY"); break;
+			}
+		}
 	};
 
 	template <unsigned _INDEX, Response RSP_TYPE, Transfer TRANSFER = TRANSFER_NONE>
@@ -361,11 +377,12 @@ namespace Sd_card {
 
 			unsigned _rca;
 			size_t   _capacity_mb;
+			const Csd3::Version::Type _version;
 
 		public:
 
-			Card_info(unsigned rca, size_t capacity_mb)
-			: _rca(rca), _capacity_mb(capacity_mb)
+			Card_info(unsigned rca, size_t capacity_mb, const Csd3::Version::Type version)
+			: _rca(rca), _capacity_mb(capacity_mb), _version(version)
 			{ }
 
 			/**
@@ -377,6 +394,12 @@ namespace Sd_card {
 			 * Return relative card address
 			 */
 			unsigned rca() const { return _rca; }
+
+			/**
+			 * Returns the version of the card
+			 */
+			Csd3::Version::Type version() const { return _version; }
+
 	};
 
 
@@ -428,7 +451,7 @@ namespace Sd_card {
 			{
 				/* send CMD55 prefix */
 				if (!_issue_command(Acmd_prefix(prefix_rca))) {
-					PERR("prefix command timed out");
+					error("prefix command timed out");
 					return false;
 				}
 
@@ -442,7 +465,7 @@ namespace Sd_card {
 			 * Extract capacity information from CSD register
 			 *
 			 * \throw  Detection_failed
-			 * \return capacity in 512-byte blocks
+			 * \return capacity in 512-kByte blocks
 			 */
 			size_t _sd_card_device_size(Csd const csd)
 			{
@@ -453,7 +476,6 @@ namespace Sd_card {
 				 */
 
 				if (Csd3::Version::get(csd.csd3) == Csd3::Version::STANDARD_CAPACITY) {
-
 					/*
 					 * Calculation of the capacity according to the
 					 * "Physical Layer Simplified Specification Version 4.10",
@@ -462,19 +484,21 @@ namespace Sd_card {
 					size_t const read_bl_len = Csd2::V1_read_bl_len::get(csd.csd2);
 					size_t const c_size      = (Csd2::V1_c_size_hi::get(csd.csd2) << 2)
 					                         |  Csd1::V1_c_size_lo::get(csd.csd1);
+
 					size_t const c_size_mult = Csd1::V1_c_size_mult::get(csd.csd1);
 					size_t const mult        = 1 << (c_size_mult + 2);
 					size_t const block_len   = 1 << read_bl_len;
 					size_t const capacity    = (c_size + 1)*mult*block_len;
+					size_t const capacity512KiB = capacity / (512 * 1024);
 
-					return capacity;
+					return capacity512KiB;
 				}
 
 				if (Csd3::Version::get(csd.csd3) == Csd3::Version::HIGH_CAPACITY)
 					return ((Csd2::V2_device_size_hi::get(csd.csd2) << 16)
 				           | Csd1::V2_device_size_lo::get(csd.csd1)) + 1;
 
-				PERR("Could not detect SD-card capacity");
+				error("Could not detect SD-card capacity");
 				throw Detection_failed();
 			}
 
@@ -488,80 +512,81 @@ namespace Sd_card {
 			Card_info _detect()
 			{
 				if (!issue_command(All_send_cid())) {
-					PWRN("All_send_cid command failed");
+					warning("All_send_cid command failed");
 					throw Detection_failed();
 				}
 
 				Cid const cid = _read_cid();
-				PLOG("CID: 0x%08x 0x%08x 0x%08x 0x%08x",
-				     cid.raw_3, cid.raw_2, cid.raw_1, cid.raw_0);
+				log("CID: ", cid);
 
 				if (!issue_command(Send_relative_addr())) {
-					PERR("Send_relative_addr timed out");
+					error("Send_relative_addr timed out");
 					throw Detection_failed();
 				}
 
 				unsigned const rca = _read_rca();
-				PLOG("RCA: 0x%04x", rca);
+				log("RCA: ", Hex(rca));
 
 				if (!issue_command(Send_csd(rca))) {
-					PERR("Send_csd failed");
+					error("Send_csd failed");
 					throw Detection_failed();
 				}
 
 				Csd const csd = _read_csd();
 
 				if (!issue_command(Select_card(rca))) {
-					PERR("Select_card failed");
+					error("Select_card failed");
 					throw Detection_failed();
 				}
 
-				return Card_info(rca, _sd_card_device_size(csd) / 2);
+				return Card_info(rca, _sd_card_device_size(csd) / 2,
+					static_cast<Csd3::Version::Type>(Csd3::Version::get(csd.csd3)));
 			}
 
 			Card_info _detect_mmc()
 			{
 				if (!issue_command(All_send_cid())) {
-					PWRN("All_send_cid command failed");
+					warning("All_send_cid command failed");
 					throw Detection_failed();
 				}
 
 				unsigned const rca = 1;
 
 				if (!issue_command(Send_relative_addr(rca))) {
-					PERR("Send_relative_addr timed out");
+					error("Send_relative_addr timed out");
 					throw Detection_failed();
 				}
 
 				if (!issue_command(Send_csd(rca))) {
-					PERR("Send_csd failed");
+					error("Send_csd failed");
 					throw Detection_failed();
 				}
 
 				Csd const csd = _read_csd();
 
 				if (Csd3::Version::get(csd.csd3) != Csd3::Version::EXT_CSD) {
-					PERR("Csd version is not extented CSD");
+					error("Csd version is not extented CSD");
 					throw Detection_failed();
 				}
 
 				if (Csd3::Mmc_spec_vers::get(csd.csd3) < 4) {
-					PERR("Csd specific version is less than 4");
+					error("Csd specific version is less than 4");
 					throw Detection_failed();
 				}
 
 				if (!issue_command(Select_card(rca))) {
-					PERR("Select_card failed");
+					error("Select_card failed");
 					throw Detection_failed();
 				}
 
 				size_t device_size;
 				if(!(device_size = _read_ext_csd())) {
-					PERR("Could not read extented CSD");
+					error("Could not read extented CSD");
 					throw Detection_failed();
 				}
 
-				return Card_info(rca, device_size);
+				return Card_info(rca, device_size,
+					static_cast<Csd3::Version::Type>(Csd3::Version::get(csd.csd3)));
 			}
 	};
 }

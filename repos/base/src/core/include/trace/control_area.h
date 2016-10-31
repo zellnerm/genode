@@ -18,7 +18,7 @@
 #include <dataspace/capability.h>
 
 /* base-internal includes */
-#include <trace/control.h>
+#include <base/internal/trace_control.h>
 
 namespace Genode { namespace Trace { class Control_area; } }
 
@@ -79,7 +79,7 @@ class Genode::Trace::Control_area
 				return true;
 			}
 
-			PERR("trace-control allocaton failed");
+			error("trace-control allocaton failed");
 			return false;
 		}
 

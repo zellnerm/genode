@@ -13,8 +13,9 @@
  */
 
 /* Genode includes */
+#include <util/construct_at.h>
 #include <base/env.h>
-#include <base/printf.h>
+#include <base/log.h>
 
 /* libc plugin interface */
 #include <libc-plugin/fd_alloc.h>
@@ -23,8 +24,14 @@ namespace Libc {
 
 	File_descriptor_allocator *file_descriptor_allocator()
 	{
-		static File_descriptor_allocator _file_descriptor_allocator;
-		return &_file_descriptor_allocator;
+		static bool constructed = 0;
+		static char placeholder[sizeof(File_descriptor_allocator)];
+		if (!constructed) {
+			Genode::construct_at<File_descriptor_allocator>(placeholder);
+			constructed = 1;
+		}
+
+		return reinterpret_cast<File_descriptor_allocator *>(placeholder);
 	}
 }
 
@@ -52,11 +59,11 @@ File_descriptor *File_descriptor_allocator::alloc(Plugin *plugin,
 	if (libc_fd <= ANY_FD)
 		alloc_ok = Allocator_avl_base::alloc(1, reinterpret_cast<void**>(&addr));
 	else
-		alloc_ok = (Allocator_avl_base::alloc_addr(1, addr).is_ok());
+		alloc_ok = (Allocator_avl_base::alloc_addr(1, addr).ok());
 
 	if (!alloc_ok) {
-		PERR("could not allocate libc_fd %d%s",
-		     libc_fd, libc_fd == ANY_FD ? " (any)" : "");
+		error("could not allocate libc_fd ", libc_fd,
+		      libc_fd == ANY_FD ? " (any)" : "");
 		return 0;
 	}
 
@@ -81,3 +88,10 @@ File_descriptor *File_descriptor_allocator::find_by_libc_fd(int libc_fd)
 {
 	return metadata(reinterpret_cast<void*>(libc_fd));
 }
+
+
+/********************
+ ** Libc functions **
+ ********************/
+
+extern "C" int __attribute__((weak)) getdtablesize(void) { return MAX_NUM_FDS; }

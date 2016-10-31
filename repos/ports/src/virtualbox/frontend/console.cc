@@ -11,7 +11,7 @@
  * version 2.
  */
 
-#include <base/printf.h>
+#include <base/log.h>
 #include <util/xml_node.h>
 
 #include <VBox/settings.h>
@@ -115,9 +115,8 @@ HRESULT Console::onCPUExecutionCapChange(ULONG aExecutionCap)                   
 HRESULT Console::onStorageControllerChange()                                    DUMMY(E_FAIL)
 HRESULT Console::onMediumChange(IMediumAttachment *aMediumAttachment, BOOL)     DUMMY(E_FAIL)
 HRESULT Console::onVRDEServerChange(BOOL aRestart)                              DUMMY(E_FAIL)
-
-void Console::onUSBDeviceStateChange(IUSBDevice *aDevice, bool aAttached,
-                                     IVirtualBoxErrorInfo *aError)              TRACE()
+HRESULT Console::onUSBDeviceAttach(IUSBDevice *, IVirtualBoxErrorInfo *, ULONG) DUMMY(E_FAIL)
+HRESULT Console::onUSBDeviceDetach(IN_BSTR aId, IVirtualBoxErrorInfo *aError)   DUMMY(E_FAIL)
 
 HRESULT Console::onShowWindow(BOOL aCheck, BOOL *aCanShow, LONG64 *aWinId)      DUMMY(E_FAIL)
 HRESULT Console::onNetworkAdapterChange(INetworkAdapter *, BOOL changeAdapter)  DUMMY(E_FAIL)
@@ -141,8 +140,9 @@ void fireStateChangedEvent(IEventSource* aSource,
 void fireRuntimeErrorEvent(IEventSource* aSource, BOOL a_fatal,
                            CBSTR a_id, CBSTR a_message)
 {
-	PERR("%s : %u %s %s", __func__, a_fatal,
-	     Utf8Str(a_id).c_str(), Utf8Str(a_message).c_str());
+	Genode::error(__func__, " : ", a_fatal, " ",
+	              Utf8Str(a_id).c_str(), " ",
+	              Utf8Str(a_message).c_str());
 
 	TRACE();
 }
@@ -162,7 +162,7 @@ void GenodeConsole::update_video_mode()
 	if (fb && (fb->w() == 0) && (fb->h() == 0)) {
 		/* interpret a size of 0x0 as indication to quit VirtualBox */
 		if (PowerButton() != S_OK)
-			PERR("ACPI shutdown failed");
+			Genode::error("ACPI shutdown failed");
 		return;
 	}
 
@@ -189,26 +189,24 @@ void GenodeConsole::handle_input(unsigned)
 	_vbox_mouse->COMGETTER(RelativeSupported)(&guest_rel);
 	_vbox_mouse->COMGETTER(MultiTouchSupported)(&guest_multi);
 
-	for (int i = 0, num_ev = _input.flush(); i < num_ev; ++i) {
-		Input::Event &ev = _ev_buf[i];
+	_input.for_each_event([&] (Input::Event const &ev) {
+		bool const press   = ev.type() == Input::Event::PRESS;
+		bool const release = ev.type() == Input::Event::RELEASE;
+		bool const key     = press || release;
+		bool const motion  = ev.type() == Input::Event::MOTION;
+		bool const wheel   = ev.type() == Input::Event::WHEEL;
+		bool const touch   = ev.type() == Input::Event::TOUCH;
 
-		bool const is_press   = ev.type() == Input::Event::PRESS;
-		bool const is_release = ev.type() == Input::Event::RELEASE;
-		bool const is_key     = is_press || is_release;
-		bool const is_motion  = ev.type() == Input::Event::MOTION;
-		bool const is_wheel   = ev.type() == Input::Event::WHEEL;
-		bool const is_touch   = ev.type() == Input::Event::TOUCH;
-
-		if (is_key) {
+		if (key) {
 			Scan_code scan_code(ev.keycode());
 
 			unsigned char const release_bit =
 				(ev.type() == Input::Event::RELEASE) ? 0x80 : 0;
 
-			if (scan_code.is_normal())
+			if (scan_code.normal())
 				_vbox_keyboard->PutScancode(scan_code.code() | release_bit);
 
-			if (scan_code.is_ext()) {
+			if (scan_code.ext()) {
 				_vbox_keyboard->PutScancode(0xe0);
 				_vbox_keyboard->PutScancode(scan_code.ext() | release_bit);
 			}
@@ -218,22 +216,22 @@ void GenodeConsole::handle_input(unsigned)
 		 * Track press/release status of keys and buttons. Currently,
 		 * only the mouse-button states are actually used.
 		 */
-		if (is_press)
+		if (press)
 			_key_status[ev.keycode()] = true;
 
-		if (is_release)
+		if (release)
 			_key_status[ev.keycode()] = false;
 
-		bool const is_mouse_button_event =
-			is_key && _is_mouse_button(ev.keycode());
+		bool const mouse_button_event =
+			key && _mouse_button(ev.keycode());
 
-		bool const is_mouse_event = is_mouse_button_event || is_motion;
+		bool const mouse_event = mouse_button_event || motion;
 
-		if (is_mouse_event) {
+		if (mouse_event) {
 			unsigned const buttons = (_key_status[Input::BTN_LEFT]   ? MouseButtonState_LeftButton : 0)
-					               | (_key_status[Input::BTN_RIGHT]  ? MouseButtonState_RightButton : 0)
-					               | (_key_status[Input::BTN_MIDDLE] ? MouseButtonState_MiddleButton : 0);
-			if (ev.is_absolute_motion()) {
+			                       | (_key_status[Input::BTN_RIGHT]  ? MouseButtonState_RightButton : 0)
+			                       | (_key_status[Input::BTN_MIDDLE] ? MouseButtonState_MiddleButton : 0);
+			if (ev.absolute_motion()) {
 
 				_last_received_motion_event_was_absolute = true;
 
@@ -247,12 +245,12 @@ void GenodeConsole::handle_input(unsigned)
 					_vbox_mouse->PutMouseEvent(rx, ry, 0, 0, buttons);
 				} else
 					_vbox_mouse->PutMouseEventAbsolute(ev.ax(), ev.ay(), 0,
-							                           0, buttons);
+					                                   0, buttons);
 
 				_ax = ev.ax();
 				_ay = ev.ay();
 
-			} else if (ev.is_relative_motion()) {
+			} else if (ev.relative_motion()) {
 
 				_last_received_motion_event_was_absolute = false;
 
@@ -285,14 +283,14 @@ void GenodeConsole::handle_input(unsigned)
 			}
 		}
 
-		if (is_wheel) {
+		if (wheel) {
 			if (_last_received_motion_event_was_absolute)
 				_vbox_mouse->PutMouseEventAbsolute(_ax, _ay, -ev.ry(), -ev.rx(), 0);
 			else
 				_vbox_mouse->PutMouseEvent(0, 0, -ev.ry(), -ev.rx(), 0);
 		}
 
-		if (is_touch) {
+		if (touch) {
 			/* if multitouch queue is full - send it */
 			if (mt_number >= sizeof(mt_events) / sizeof(mt_events[0])) {
 				_vbox_mouse->PutEventMultiTouch(mt_number, mt_number,
@@ -315,14 +313,14 @@ void GenodeConsole::handle_input(unsigned)
 			};
 
 			int status = MultiTouch::InContact | MultiTouch::InRange;
-			if (ev.is_touch_release())
+			if (ev.touch_release())
 				status = MultiTouch::None;
 
 			uint16_t const s = RT_MAKE_U16(slot, status);
 			mt_events[mt_number++] = RT_MAKE_U64_FROM_U16(x, y, s, 0);
 		}
 
-	}
+	});
 
 	/* if there are elements - send it */
 	if (mt_number)
@@ -477,8 +475,8 @@ int vboxClipboardReadData (VBOXCLIPBOARDCLIENTDATA *pClient, uint32_t format,
 
 	clipboard_rom->update();
 
-	if (!clipboard_rom->is_valid()) {
-		PERR("invalid clipboard dataspace");
+	if (!clipboard_rom->valid()) {
+		Genode::error("invalid clipboard dataspace");
 		return VERR_NOT_SUPPORTED;
 	}
 
@@ -488,7 +486,7 @@ int vboxClipboardReadData (VBOXCLIPBOARDCLIENTDATA *pClient, uint32_t format,
 
 		Genode::Xml_node node(data);
 		if (!node.has_type("clipboard")) {
-			PERR("invalid clipboard xml syntax");
+			Genode::error("invalid clipboard xml syntax");
 			return VERR_INVALID_PARAMETER;
 		}
 
@@ -497,7 +495,7 @@ int vboxClipboardReadData (VBOXCLIPBOARDCLIENTDATA *pClient, uint32_t format,
 		decoded_clipboard_content = (char*)malloc(node.content_size());
 
 		if (!decoded_clipboard_content) {
-			PERR("could not allocate buffer for decoded clipboard content");
+			Genode::error("could not allocate buffer for decoded clipboard content");
 			return 0;
 		}
 
@@ -519,7 +517,7 @@ int vboxClipboardReadData (VBOXCLIPBOARDCLIENTDATA *pClient, uint32_t format,
 			*pcbActual = 0;
 
 	} catch (Genode::Xml_node::Invalid_syntax) {
-		PERR("invalid clipboard xml syntax");
+		Genode::error("invalid clipboard xml syntax");
 		return VERR_INVALID_PARAMETER;
 	}
 
@@ -545,7 +543,7 @@ void vboxClipboardWriteData (VBOXCLIPBOARDCLIENTDATA *pClient, void *pv,
 		Genode::Reporter::Xml_generator xml(*clipboard_reporter, [&] () {
 			xml.append_sanitized(message, strlen(message)); });
 	} catch (...) {
-		PERR("could not write clipboard data");
+		Genode::error("could not write clipboard data");
 	}
 
 	RTStrFree(message);

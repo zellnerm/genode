@@ -23,6 +23,7 @@
 #include <base/allocator_avl.h>
 #include <base/env.h>
 #include <base/printf.h>
+#include <base/log.h>
 #include <base/slab.h>
 #include <base/sleep.h>
 #include <dataspace/client.h>
@@ -33,6 +34,7 @@
 #include <platform_device/client.h>
 #include <platform_session/connection.h>
 #include <rm_session/connection.h>
+#include <region_map/client.h>
 #include <timer_session/connection.h>
 #include <util/misc_math.h>
 #include <util/retry.h>
@@ -176,7 +178,7 @@ struct Pci_driver
 			[&] () { client.config_write(devfn, val, _access_size(val)); } ,
 			[&] () {
 				char quota[32];
-				Genode::snprintf(quota, sizeof(quota), "ram_quota=%zd",
+				Genode::snprintf(quota, sizeof(quota), "ram_quota=%ld",
 				                 donate);
 				Genode::env()->parent()->upgrade(_pci.cap(), quota);
 				donate *= 2;
@@ -186,21 +188,29 @@ struct Pci_driver
 	int first_device(int *bus, int *dev, int *fun)
 	{
 		_cap = _pci.first_device(CLASS_NETWORK, CLASS_MASK);
+		if (!_cap.valid())
+			return -1;
+
 		_bus_address(bus, dev, fun);
 		return 0;
 	}
 
 	int next_device(int *bus, int *dev, int *fun)
 	{
+		int result = -1;
+
 		_last_cap = _cap;
 
 		_cap = _pci.next_device(_cap, CLASS_NETWORK, CLASS_MASK);
-		_bus_address(bus, dev, fun);
+		if (_cap.valid()) {
+			_bus_address(bus, dev, fun);
+			result = 0;
+		}
 
 		if (_last_cap.valid())
 			_pci.release_device(_last_cap);
 
-		return 0;
+		return result;
 	}
 
 	Genode::addr_t alloc_dma_memory(Genode::size_t size)
@@ -214,7 +224,7 @@ struct Pci_driver
 				[&] () { return _pci.alloc_dma_buffer(size); },
 				[&] () {
 					char quota[32];
-					Genode::snprintf(quota, sizeof(quota), "ram_quota=%zd",
+					Genode::snprintf(quota, sizeof(quota), "ram_quota=%ld",
 					                 donate);
 					Genode::env()->parent()->upgrade(_pci.cap(), quota);
 					donate = donate * 2 > size ? 4096 : donate * 2;
@@ -225,7 +235,7 @@ struct Pci_driver
 
 			return _region.mapped_base;
 		} catch (...) {
-			PERR("failed to allocate dma memory");
+			Genode::error("failed to allocate dma memory");
 			return 0;
 		}
 	}
@@ -313,7 +323,7 @@ static Irq_handler *_irq_handler;
 extern "C" int dde_interrupt_attach(void(*handler)(void *), void *priv)
 {
 	if (_irq_handler) {
-		PERR("Irq_handler already registered");
+		Genode::error("Irq_handler already registered");
 		Genode::sleep_forever();
 	}
 
@@ -356,9 +366,11 @@ extern "C" void *dde_dma_alloc(dde_size_t size, dde_size_t align,
                                     dde_size_t offset)
 {
 	void *ptr;
-	if (allocator().alloc_aligned(size, &ptr, Genode::log2(align)).is_error()) {
-		PERR("memory allocation failed in alloc_memblock (size=%zu, align=%zx,"
-		     " offset=%zx)", (Genode::size_t)size, (Genode::size_t)align, (Genode::size_t)offset);
+	if (allocator().alloc_aligned(size, &ptr, Genode::log2(align)).error()) {
+		Genode::error("memory allocation failed in alloc_memblock ("
+		              "size=",   size, " "
+		              "align=",  Genode::Hex(align), " "
+		              "offset=", Genode::Hex(offset), ")");
 		return 0;
 	}
 	return ptr;
@@ -383,10 +395,7 @@ extern "C" void dde_request_io(dde_uint8_t virt_bar_ioport)
 {
 	using namespace Genode;
 
-	if (_io_port) {
-		PERR("Io_port_connection already open");
-		sleep_forever();
-	}
+	if (_io_port) destroy(env()->heap(), _io_port);
 
 	Platform::Device_client device(pci_drv()._cap);
 	Io_port_session_capability cap = device.io_port(virt_bar_ioport);
@@ -424,11 +433,12 @@ extern "C" void dde_outl(dde_addr_t port, dde_uint32_t data) {
  **********************/
 
 struct Slab_backend_alloc : public Genode::Allocator,
-                            public Genode::Rm_connection
+                            public Genode::Rm_connection,
+                            public Genode::Region_map_client
 {
 	enum {
-		VM_SIZE    = 1024 * 1024,
-		BLOCK_SIZE =  64 * 1024,
+		VM_SIZE    = 2 * 1024 * 1024,
+		BLOCK_SIZE =       64 * 1024,
 		ELEMENTS   = VM_SIZE / BLOCK_SIZE,
 	};
 
@@ -443,13 +453,13 @@ struct Slab_backend_alloc : public Genode::Allocator,
 		using namespace Genode;
 
 		if (_index == ELEMENTS) {
-			PERR("Slab-backend exhausted!");
+			error("slab backend exhausted!");
 			return false;
 		}
 
 		try {
 			_ds_cap[_index] = _ram.alloc(BLOCK_SIZE);
-			Rm_connection::attach_at(_ds_cap[_index], _index * BLOCK_SIZE, BLOCK_SIZE, 0);
+			Region_map_client::attach_at(_ds_cap[_index], _index * BLOCK_SIZE, BLOCK_SIZE, 0);
 		} catch (...) { return false; }
 
 		/* return base + offset in VM area */
@@ -462,7 +472,7 @@ struct Slab_backend_alloc : public Genode::Allocator,
 
 	Slab_backend_alloc(Genode::Ram_session &ram)
 	:
-		Rm_connection(0, VM_SIZE),
+		Region_map_client(Rm_connection::create(VM_SIZE)),
 		_index(0), _range(Genode::env()->heap()), _ram(ram)
 	{
 		/* reserver attach us, anywere */
@@ -485,45 +495,48 @@ struct Slab_backend_alloc : public Genode::Allocator,
 
 		done = _alloc_block();
 		if (!done) {
-			PERR("Backend allocator exhausted\n");
+			Genode::error("backend allocator exhausted");
 			return false;
 		}
 
 		return _range.alloc(size, out_addr);
 	}
 
-	void           free(void *addr, Genode::size_t size) { }
+	void           free(void *addr, Genode::size_t size) { _range.free(addr, size); }
 	Genode::size_t overhead(Genode::size_t size) const   { return 0; }
 	bool           need_size_for_free() const            { return false; }
 };
 
 
-struct Slab_alloc : public Genode::Slab
+class Slab_alloc : public Genode::Slab
 {
-	/*
-	* Each slab block in the slab contains about 8 objects (slab entries)
-	* as proposed in the paper by Bonwick and block sizes are multiples of
-	* page size.
-	*/
-	static Genode::size_t _calculate_block_size(Genode::size_t object_size)
-	{
-		Genode::size_t block_size = 8 * (object_size + sizeof(Genode::Slab_entry))
-		                                     + sizeof(Genode::Slab_block);
-		return Genode::align_addr(block_size, 12);
-	}
+	private:
 
-	Slab_alloc(Genode::size_t object_size, Slab_backend_alloc &allocator)
-	: Slab(object_size, _calculate_block_size(object_size), 0, &allocator) { }
+		Genode::size_t const _object_size;
 
-	/**
-	 * Convenience slabe-entry allocation
-	 */
-	Genode::addr_t alloc()
-	{
-		Genode::addr_t result;
-		return (Slab::alloc(slab_size(), (void **)&result) ? result : 0);
-	}
+		static Genode::size_t _calculate_block_size(Genode::size_t object_size)
+		{
+			Genode::size_t const block_size = 8*object_size;
+			return Genode::align_addr(block_size, 12);
+		}
+
+	public:
+
+		Slab_alloc(Genode::size_t object_size, Slab_backend_alloc &allocator)
+		:
+			Slab(object_size, _calculate_block_size(object_size), 0, &allocator),
+			_object_size(object_size)
+		{ }
+
+		Genode::addr_t alloc()
+		{
+			Genode::addr_t result;
+			return (Slab::alloc(_object_size, (void **)&result) ? result : 0);
+		}
+
+		void free(void *ptr) { Slab::free(ptr, _object_size); }
 };
+
 
 struct Slab
 {
@@ -533,13 +546,12 @@ struct Slab
 		NUM_SLABS = (SLAB_STOP_LOG2 - SLAB_START_LOG2) + 1,
 	};
 
-	Slab_backend_alloc &_back_alloc;
 	Slab_alloc         *_allocator[NUM_SLABS];
 	Genode::addr_t      _start;
 	Genode::addr_t      _end;
 
 	Slab(Slab_backend_alloc &alloc)
-	: _back_alloc(alloc), _start(alloc.start()), _end(alloc.end())
+	: _start(alloc.start()), _end(alloc.end())
 	{
 		for (unsigned i = 0; i < NUM_SLABS; i++)
 			_allocator[i] = new (Genode::env()->heap())
@@ -631,7 +643,7 @@ static Io_memory *_io_mem;
 extern "C" int dde_request_iomem(dde_addr_t start, dde_addr_t *vaddr)
 {
 	if (_io_mem) {
-		PERR("Io_memory already requested");
+		Genode::error("Io_memory already requested");
 		Genode::sleep_forever();
 	}
 

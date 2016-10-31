@@ -12,7 +12,8 @@
  */
 
 /* Genode includes */
-#include <base/printf.h>
+#include <util/bit_allocator.h>
+#include <base/log.h>
 #include <irq_session/connection.h>
 
 /* Platform driver include */
@@ -106,7 +107,7 @@ class NoThread
 /**
  * Thread waiting for signals caused by IRQs 
  */
-class Platform::Irq_thread : public Genode::Thread<4096>
+class Platform::Irq_thread : public Genode::Thread_deprecated<4096>
 {
 	private:
 
@@ -114,7 +115,7 @@ class Platform::Irq_thread : public Genode::Thread<4096>
 
 	public:
 
-		Irq_thread() : Thread<4096>("irq_sig_recv") { start(); }
+		Irq_thread() : Thread_deprecated<4096>("irq_sig_recv") { start(); }
 
 		Genode::Signal_receiver & sig_rec() { return _sig_rec; }
 
@@ -128,8 +129,8 @@ class Platform::Irq_thread : public Genode::Thread<4096>
 				Sdb *dispatcher = dynamic_cast<Sdb *>(sig.context());
 
 				if (!dispatcher) {
-					PERR("dispatcher missing for signal %p, %u",
-					     sig.context(), sig.num());
+					Genode::error("dispatcher missing for signal ",
+					              sig.context(), " ", sig.num());
 					continue;
 				}
 				dispatcher->dispatch(sig.num());
@@ -220,7 +221,7 @@ void Platform::Irq_session_component::ack_irq()
 	/* shared irq handling */
 	Irq_component *irq_obj = Proxy::get_irq_proxy<Irq_component>(_gsi);
 	if (!irq_obj) {
-		PERR("Expected to find IRQ proxy for IRQ %02x", _gsi);
+		Genode::error("expected to find IRQ proxy for IRQ ", Genode::Hex(_gsi));
 		return;
 	}
 
@@ -268,10 +269,11 @@ Platform::Irq_session_component::Irq_session_component(unsigned irq,
 
 	_gsi = Platform::Irq_override::irq_override(_gsi, trigger, polarity);
 	if (_gsi != irq || trigger != Genode::Irq_session::TRIGGER_UNCHANGED ||
-	    polarity != Genode::Irq_session::POLARITY_UNCHANGED)
-		PINF("IRQ override %u->%u trigger mode=%s polarity=%s", irq, _gsi,
-		     trigger  == Genode::Irq_session::TRIGGER_LEVEL ? "LEVEL" : trigger == Genode::Irq_session::TRIGGER_EDGE ? "EDGE" : "UNCHANGED",
-		     polarity == Genode::Irq_session::POLARITY_HIGH ? "HIGH" : polarity == Genode::Irq_session::POLARITY_LOW ? "LOW" : "UNCHANGED");
+	    polarity != POLARITY_UNCHANGED) {
+
+		Genode::log("IRQ override ", irq, "->", _gsi, ", "
+		            "trigger mode: ", trigger, ", ", "polarity: ", polarity);
+	}
 
 	try {
 		/* check if shared IRQ object was used before */
@@ -280,7 +282,7 @@ Platform::Irq_session_component::Irq_session_component(unsigned irq,
 			return;
 	} catch (Genode::Parent::Service_denied) { }
 
-	PERR("unavailable IRQ 0x%x requested", _gsi);
+	Genode::error("unavailable IRQ ", Genode::Hex(_gsi), " requested");
 }
 
 
@@ -317,7 +319,7 @@ void Platform::Irq_session_component::sigh(Genode::Signal_context_capability sig
 	/* shared irq handling */
 	Irq_component *irq_obj = Proxy::get_irq_proxy<Irq_component>(_gsi);
 	if (!irq_obj) {
-		PERR("signal handler got not registered - irq object unavailable");
+		Genode::error("signal handler got not registered - irq object unavailable");
 		return;
 	}
 

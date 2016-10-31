@@ -260,7 +260,7 @@ namespace File_system {
 			 */
 			void _refresh_content()
 			{
-				unsigned long tmp;
+				unsigned long tmp = 0;
 
 				_content[_content_filled - 1] = '\0';
 				_content_filled = 0;
@@ -323,7 +323,7 @@ namespace File_system {
 			size_t read(char *dst, size_t len, seek_off_t seek_offset)
 			{
 				if (len > 32) {
-					PERR("len:'%zu' to small", len);
+					Genode::error("len:'", len, "' to small");
 					return 0;
 				}
 

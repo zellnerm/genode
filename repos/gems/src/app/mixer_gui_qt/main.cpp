@@ -5,7 +5,7 @@
  */
 
 /* Genode includes */
-#include <base/printf.h>
+#include <base/log.h>
 #include <base/thread.h>
 #include <os/attached_rom_dataspace.h>
 
@@ -21,7 +21,7 @@
 enum { THREAD_STACK_SIZE = 2 * 1024 * sizeof(long) };
 
 
-struct Report_thread : Genode::Thread<THREAD_STACK_SIZE>
+struct Report_thread : Genode::Thread_deprecated<THREAD_STACK_SIZE>
 {
 	QMember<Report_proxy> proxy;
 
@@ -45,13 +45,13 @@ struct Report_thread : Genode::Thread<THREAD_STACK_SIZE>
 	{
 		channels_rom.update();
 
-		if (channels_rom.is_valid())
+		if (channels_rom.valid())
 			_report(channels_rom.local_addr<char>(), channels_rom.size());
 	}
 
 	Report_thread()
 	:
-		Genode::Thread<THREAD_STACK_SIZE>("report_thread"),
+		Genode::Thread_deprecated<THREAD_STACK_SIZE>("report_thread"),
 		channels_dispatcher(sig_rec, *this, &Report_thread::_handle_channels)
 	{
 		channels_rom.sigh(channels_dispatcher);
@@ -97,7 +97,7 @@ int main(int argc, char *argv[])
 	Report_thread *report_thread;
 	try { report_thread = new Report_thread(); }
 	catch (...) {
-		PERR("Could not create Report_thread");
+		Genode::error("Could not create Report_thread");
 		return -1;
 	}
 

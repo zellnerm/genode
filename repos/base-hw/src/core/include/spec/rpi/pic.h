@@ -11,10 +11,11 @@
  * under the terms of the GNU General Public License version 2.
  */
 
-#ifndef _PIC_H_
-#define _PIC_H_
+#ifndef _CORE__INCLUDE__SPEC__RPI__PIC_H_
+#define _CORE__INCLUDE__SPEC__RPI__PIC_H_
 
 /* Genode includes */
+#include <base/log.h>
 #include <util/mmio.h>
 
 /* core includes */
@@ -97,32 +98,19 @@ class Genode::Usb_dwc_otg : Mmio
 			if (!_is_sof())
 				return false;
 
-			static int cnt, stat_cnt, filter_cnt, trigger_cnt, kick_cnt;
+			static int cnt = 0;
 
-			stat_cnt++;
-			if (stat_cnt == 8000) {
-				PLOG("kicked: %d filtered: %d  triggered: %d", kick_cnt, filter_cnt, trigger_cnt);
-				stat_cnt = 0;
-			}
-
-			cnt++;
-			if (cnt == 8*20) {
+			if (++cnt == 8*20) {
 				cnt = 0;
 				return false;
 			}
 
-			if (read<Guid::Kick>())
-				kick_cnt++;
-
 			if (!read<Guid::Num_valid>() || read<Guid::Kick>())
 				return false;
 
-			if (_need_trigger_sof(read<Host_frame_number::Num>(), read<Guid::Num>())) {
-				trigger_cnt++;
+			if (_need_trigger_sof(read<Host_frame_number::Num>(),
+			                      read<Guid::Num>()))
 				return false;
-			}
-
-			filter_cnt++;
 
 			write<Core_irq_status::Sof>(1);
 
@@ -136,12 +124,13 @@ class Genode::Pic : Mmio
 	public:
 
 		enum {
-			/*
-			 * FIXME: dummy ipi value on non-SMP platform, should be removed
-			 *        when SMP is an aspect of CPUs only compiled where necessary
-			 */
-			IPI       = 63,
 			NR_OF_IRQ = 64,
+
+			/*
+			 * dummy IPI value on non-SMP platform,
+			 * only used in interrupt reservation within generic code
+			 */
+			IPI,
 		};
 
 	private:
@@ -241,15 +230,8 @@ class Genode::Pic : Mmio
 			else
 				write<Irq_disable_gpu_2>(1 << (i - 8 - 32));
 		}
-
-		/*
-		 * Dummies
-		 */
-
-		bool is_ip_interrupt(unsigned) { return false; }
-		void trigger_ip_interrupt(unsigned) { }
 };
 
 namespace Kernel { class Pic : public Genode::Pic { }; }
 
-#endif /* _PIC_H_ */
+#endif /* _CORE__INCLUDE__SPEC__RPI__PIC_H_ */

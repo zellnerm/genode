@@ -18,6 +18,31 @@
 
 #include <pthread.h>
 
+/*
+ * Used by 'pthread_self()' to find out if the current thread is an alien
+ * thread.
+ */
+class Pthread_registry
+{
+	private:
+
+		enum { MAX_NUM_PTHREADS = 128 };
+
+		pthread_t _array[MAX_NUM_PTHREADS] = { 0 };
+
+	public:
+
+		void insert(pthread_t thread);
+
+		void remove(pthread_t thread);
+
+		bool contains(pthread_t thread);
+};
+
+
+Pthread_registry &pthread_registry();
+
+
 extern "C" {
 
 	struct pthread_attr
@@ -32,36 +57,45 @@ extern "C" {
 	 * This class is named 'struct pthread' because the 'pthread_t' type is
 	 * defined as 'struct pthread*' in '_pthreadtypes.h'
 	 */
-	struct pthread : Genode::Thread_base
+	struct pthread : Genode::Thread
 	{
 		pthread_attr_t _attr;
 		void *(*_start_routine) (void *);
 		void *_arg;
 
-		enum { WEIGHT = Genode::Cpu_session::DEFAULT_WEIGHT };
+		enum { WEIGHT = Genode::Cpu_session::Weight::DEFAULT_WEIGHT };
 
 		pthread(pthread_attr_t attr, void *(*start_routine) (void *),
 		        void *arg, size_t stack_size, char const * name,
-		        Genode::Cpu_session * cpu)
-		: Thread_base(WEIGHT, name, stack_size, Type::NORMAL, cpu),
+		        Genode::Cpu_session * cpu, Genode::Affinity::Location location)
+		: Thread(WEIGHT, name, stack_size, Type::NORMAL, cpu, location),
 		  _attr(attr),
 		  _start_routine(start_routine),
 		  _arg(arg)
 		{
 			if (_attr)
 				_attr->pthread = this;
+
+			pthread_registry().insert(this);
 		}
 
 		/**
 		 * Constructor to create pthread object out of existing thread,
 		 * e.g. main Genode thread
 		 */
-		pthread(Thread_base &myself, pthread_attr_t attr)
-		: Thread_base(myself),
+		pthread(Thread &myself, pthread_attr_t attr)
+		: Thread(myself),
 		  _attr(attr), _start_routine(nullptr), _arg(nullptr)
 		{
 			if (_attr)
 				_attr->pthread = this;
+
+			pthread_registry().insert(this);
+		}
+
+		virtual ~pthread()
+		{
+			pthread_registry().remove(this);
 		}
 
 		void entry()

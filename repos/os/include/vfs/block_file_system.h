@@ -84,7 +84,7 @@ class Vfs::Block_file_system : public Single_file_system
 			p = _tx_source->get_acked_packet();
 
 			if (!p.succeeded()) {
-				PERR("Could not read block(s)");
+				Genode::error("Could not read block(s)");
 				_tx_source->release_packet(p);
 				return 0;
 			}
@@ -149,7 +149,7 @@ class Vfs::Block_file_system : public Single_file_system
 		                   file_size count, file_size &out_count) override
 		{
 			if (!_writeable) {
-				PERR("block device is not writeable");
+				Genode::error("block device is not writeable");
 				return WRITE_ERR_INVALID;
 			}
 
@@ -184,8 +184,7 @@ class Vfs::Block_file_system : public Single_file_system
 					nbytes = _block_io(blk_nr, (void*)(buf + written),
 					                   bytes_left, true, true);
 					if (nbytes == 0) {
-						PERR("error while write block:%llu from block device",
-						     blk_nr);
+						Genode::error("error while write block:", blk_nr, " from block device");
 						return WRITE_ERR_INVALID;
 					}
 
@@ -204,8 +203,6 @@ class Vfs::Block_file_system : public Single_file_system
 				 * than block size, we also have to read the block first.
 				 */
 				if (displ > 0 || length < _block_size) {
-					PWRN("offset:%llu block_size:%zd displacement:%llu length:%llu",
-							seek_offset, _block_size, displ, length);
 
 					_block_io(blk_nr, _block_buffer, _block_size, false);
 					/* rewind seek offset to account for the block read */
@@ -216,8 +213,7 @@ class Vfs::Block_file_system : public Single_file_system
 
 				nbytes = _block_io(blk_nr, _block_buffer, _block_size, true);
 				if ((unsigned)nbytes != _block_size) {
-					PERR("error while writing block:%llu from Block_device",
-					     blk_nr);
+					Genode::error("error while writing block:", blk_nr, " to Block_device");
 					return WRITE_ERR_INVALID;
 				}
 
@@ -235,7 +231,7 @@ class Vfs::Block_file_system : public Single_file_system
 		                 file_size &out_count) override
 		{
 			if (!_readable) {
-				PERR("block device is not readable");
+				Genode::error("block device is not readable");
 				return READ_ERR_INVALID;
 			}
 
@@ -269,8 +265,7 @@ class Vfs::Block_file_system : public Single_file_system
 
 					nbytes = _block_io(blk_nr, dst + read, bytes_left, false, true);
 					if (nbytes == 0) {
-						PERR("error while reading block:%llu from block device",
-						     blk_nr);
+						Genode::error("error while reading block:", blk_nr, " from block device");
 						return READ_ERR_INVALID;
 					}
 
@@ -281,15 +276,9 @@ class Vfs::Block_file_system : public Single_file_system
 					continue;
 				}
 
-				if (displ > 0)
-					PWRN("offset:%llu is not aligned to block_size:%zu"
-					     " displacement:%llu", seek_offset, _block_size,
-					     displ);
-
 				nbytes = _block_io(blk_nr, _block_buffer, _block_size, false);
 				if ((unsigned)nbytes != _block_size) {
-					PERR("error while reading block:%llu from block device",
-					     blk_nr);
+					Genode::error("error while reading block:", blk_nr, " from block device");
 					return READ_ERR_INVALID;
 				}
 
@@ -321,7 +310,7 @@ class Vfs::Block_file_system : public Single_file_system
 
 			default:
 
-				PDBG("invalid ioctl request %d", opcode);
+				Genode::warning("invalid ioctl request ", (int)opcode);
 				break;
 			}
 

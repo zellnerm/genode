@@ -5,7 +5,7 @@
  */
 
 /*
- * Copyright (C) 2014 Genode Labs GmbH
+ * Copyright (C) 2014-2016 Genode Labs GmbH
  *
  * This file is part of the Genode OS framework, which is distributed
  * under the terms of the GNU General Public License version 2.
@@ -13,7 +13,7 @@
 
 /* Genode includes */
 #include <base/env.h>
-#include <base/printf.h>
+#include <base/log.h>
 #include <vfs/dir_file_system.h>
 #include <os/config.h>
 
@@ -37,6 +37,7 @@
 
 /* libc-internal includes */
 #include <libc_mem_alloc.h>
+#include "libc_errno.h"
 
 
 static Vfs::Vfs_handle *vfs_handle(Libc::File_descriptor *fd)
@@ -164,7 +165,7 @@ class Libc::Vfs_plugin : public Libc::Plugin
 			try {
 				return vfs_config();
 			} catch (...) {
-				PINF("no VFS configured");
+				Genode::warning("no VFS configured");
 				return Genode::Xml_node("<vfs/>");
 			}
 		}
@@ -177,8 +178,8 @@ class Libc::Vfs_plugin : public Libc::Plugin
 
 			Libc::File_descriptor *fd = open(path, flags, libc_fd);
 			if (fd->libc_fd != libc_fd) {
-				PERR("could not allocate fd %d for %s, got fd %d",
-				     libc_fd, path, fd->libc_fd);
+				Genode::error("could not allocate fd ", libc_fd, " "
+				              "for ", path, ", got fd ", fd->libc_fd);
 				close(fd);
 				return;
 			}
@@ -201,25 +202,27 @@ class Libc::Vfs_plugin : public Libc::Plugin
 		 */
 		Vfs_plugin() : _root_dir(_vfs_config(), Vfs::global_file_system_factory())
 		{
-			chdir(initial_cwd());
+			if (_root_dir.num_dirent("/")) {
+				chdir(initial_cwd());
 
-			_open_stdio(0, config_stdin(),  O_RDONLY);
-			_open_stdio(1, config_stdout(), O_WRONLY);
-			_open_stdio(2, config_stderr(), O_WRONLY);
+				_open_stdio(0, config_stdin(),  O_RDONLY);
+				_open_stdio(1, config_stdout(), O_WRONLY);
+				_open_stdio(2, config_stderr(), O_WRONLY);
+			}
 		}
 
 		~Vfs_plugin() { }
 
-		bool supports_access(const char *, int)              override { return true; }
-		bool supports_mkdir(const char *, mode_t)            override { return true; }
-		bool supports_open(const char *, int)                override { return true; }
-		bool supports_readlink(const char *, char *, size_t) override { return true; }
-		bool supports_rename(const char *, const char *)     override { return true; }
-		bool supports_rmdir(const char *)                    override { return true; }
-		bool supports_stat(const char *)                     override { return true; }
-		bool supports_symlink(const char *, const char *)    override { return true; }
-		bool supports_unlink(const char *)                   override { return true; }
-		bool supports_mmap()                                 override { return true; }
+		bool supports_access(const char *, int)                override { return true; }
+		bool supports_mkdir(const char *, mode_t)              override { return true; }
+		bool supports_open(const char *, int)                  override { return true; }
+		bool supports_readlink(const char *, char *, ::size_t) override { return true; }
+		bool supports_rename(const char *, const char *)       override { return true; }
+		bool supports_rmdir(const char *)                      override { return true; }
+		bool supports_stat(const char *)                       override { return true; }
+		bool supports_symlink(const char *, const char *)      override { return true; }
+		bool supports_unlink(const char *)                     override { return true; }
+		bool supports_mmap()                                   override { return true; }
 
 		Libc::File_descriptor *open(const char *, int, int libc_fd);
 
@@ -241,7 +244,7 @@ class Libc::Vfs_plugin : public Libc::Plugin
 		::off_t lseek(Libc::File_descriptor *fd, ::off_t offset, int whence) override;
 		int     mkdir(const char *, mode_t) override;
 		ssize_t read(Libc::File_descriptor *, void *, ::size_t) override;
-		ssize_t readlink(const char *, char *, size_t) override;
+		ssize_t readlink(const char *, char *, ::size_t) override;
 		int     rename(const char *, const char *) override;
 		int     rmdir(const char *) override;
 		int     stat(const char *, struct stat *) override;
@@ -328,7 +331,8 @@ Libc::File_descriptor *Libc::Vfs_plugin::open(char const *path, int flags,
 
 int Libc::Vfs_plugin::close(Libc::File_descriptor *fd)
 {
-	Genode::destroy(Genode::env()->heap(), vfs_handle(fd));
+	Vfs::Vfs_handle *handle = vfs_handle(fd);
+	handle->ds().close(handle);
 	Libc::file_descriptor_allocator()->free(fd);
 	return 0;
 }
@@ -348,8 +352,13 @@ int Libc::Vfs_plugin::fstat(Libc::File_descriptor *fd, struct stat *buf)
 }
 
 
-int Libc::Vfs_plugin::fstatfs(Libc::File_descriptor *, struct statfs *buf)
+int Libc::Vfs_plugin::fstatfs(Libc::File_descriptor *fd, struct statfs *buf)
 {
+	if (!fd || !buf)
+		return Libc::Errno(EFAULT);
+
+	Genode::memset(buf, 0, sizeof(*buf));
+
 	buf->f_flags = MNT_UNION;
 	return 0;
 }
@@ -384,6 +393,7 @@ int Libc::Vfs_plugin::stat(char const *path, struct stat *buf)
 
 	switch (_root_dir.stat(path, stat)) {
 	case Result::STAT_ERR_NO_ENTRY: errno = ENOENT; return -1;
+	case Result::STAT_ERR_NO_PERM:  errno = EACCES; return -1;
 	case Result::STAT_OK:                           break;
 	}
 
@@ -444,7 +454,7 @@ ssize_t Libc::Vfs_plugin::getdirentries(Libc::File_descriptor *fd, char *buf,
                                         ::size_t nbytes, ::off_t *basep)
 {
 	if (nbytes < sizeof(struct dirent)) {
-		PERR("getdirentries: buffer too small");
+		Genode::error("getdirentries: buffer too small");
 		return -1;
 	}
 
@@ -458,7 +468,8 @@ ssize_t Libc::Vfs_plugin::getdirentries(Libc::File_descriptor *fd, char *buf,
 	unsigned const index = handle->seek() / sizeof(Vfs::Directory_service::Dirent);
 
 	switch (handle->ds().dirent(fd->fd_path, index, dirent_out)) {
-	case Result::DIRENT_ERR_INVALID_PATH: /* XXX errno */ return -1;
+	case Result::DIRENT_ERR_INVALID_PATH: errno = ENOENT; return -1;
+	case Result::DIRENT_ERR_NO_PERM:      errno = EACCES; return -1;
 	case Result::DIRENT_OK:                               break;
 	}
 
@@ -580,7 +591,7 @@ int Libc::Vfs_plugin::ioctl(Libc::File_descriptor *fd, int request, char *argp)
 		}
 
 	default:
-		PWRN("unsupported ioctl (request=0x%x)", request);
+		Genode::warning("unsupported ioctl (request=", Genode::Hex(request), ")");
 		break;
 	}
 
@@ -692,7 +703,7 @@ int Libc::Vfs_plugin::fcntl(Libc::File_descriptor *fd, int cmd, long arg)
 			 * duplicate.
 			 */
 			if (dup2(fd, new_fd) == -1) {
-				PERR("Plugin::fcntl: dup2 unexpectedly failed");
+				Genode::error("Plugin::fcntl: dup2 unexpectedly failed");
 				errno = EINVAL;
 				return -1;
 			}
@@ -707,7 +718,7 @@ int Libc::Vfs_plugin::fcntl(Libc::File_descriptor *fd, int cmd, long arg)
 		break;
 	}
 
-	PERR("fcntl(): command %d not supported - vfs", cmd);
+	Genode::error("fcntl(): command ", cmd, " not supported - vfs");
 	errno = EINVAL;
 	return -1;
 }
@@ -736,7 +747,7 @@ int Libc::Vfs_plugin::symlink(const char *oldpath, const char *newpath)
 }
 
 
-ssize_t Libc::Vfs_plugin::readlink(const char *path, char *buf, size_t buf_size)
+ssize_t Libc::Vfs_plugin::readlink(const char *path, char *buf, ::size_t buf_size)
 {
 	typedef Vfs::Directory_service::Readlink_result Result;
 
@@ -744,6 +755,7 @@ ssize_t Libc::Vfs_plugin::readlink(const char *path, char *buf, size_t buf_size)
 
 	switch (_root_dir.readlink(path, buf, buf_size, out_len)) {
 	case Result::READLINK_ERR_NO_ENTRY: errno = ENOENT; return -1;
+	case Result::READLINK_ERR_NO_PERM:  errno = EACCES; return -1;
 	case Result::READLINK_OK:                           break;
 	};
 
@@ -775,6 +787,24 @@ int Libc::Vfs_plugin::rename(char const *from_path, char const *to_path)
 {
 	typedef Vfs::Directory_service::Rename_result Result;
 
+	if (_root_dir.leaf_path(to_path)) {
+
+		if (_root_dir.directory(to_path)) {
+			if (!_root_dir.directory(from_path)) {
+				errno = EISDIR; return -1;
+			}
+
+			if (_root_dir.num_dirent(to_path)) {
+				errno = ENOTEMPTY; return -1;
+			}
+
+		} else {
+			if (_root_dir.directory(from_path)) {
+				errno = ENOTDIR; return -1;
+			}
+		}
+	}
+
 	switch (_root_dir.rename(from_path, to_path)) {
 	case Result::RENAME_ERR_NO_ENTRY: errno = ENOENT; return -1;
 	case Result::RENAME_ERR_CROSS_FS: errno = EXDEV;  return -1;
@@ -789,13 +819,13 @@ void *Libc::Vfs_plugin::mmap(void *addr_in, ::size_t length, int prot, int flags
                              Libc::File_descriptor *fd, ::off_t offset)
 {
 	if (prot != PROT_READ) {
-		PERR("mmap for prot=%x not supported", prot);
+		Genode::error("mmap for prot=", Genode::Hex(prot), " not supported");
 		errno = EACCES;
 		return (void *)-1;
 	}
 
 	if (addr_in != 0) {
-		PERR("mmap for predefined address not supported");
+		Genode::error("mmap for predefined address not supported");
 		errno = EINVAL;
 		return (void *)-1;
 	}
@@ -812,7 +842,7 @@ void *Libc::Vfs_plugin::mmap(void *addr_in, ::size_t length, int prot, int flags
 	}
 
 	if (::pread(fd->libc_fd, addr, length, offset) < 0) {
-		PERR("mmap could not obtain file content");
+		Genode::error("mmap could not obtain file content");
 		::munmap(addr, length);
 		errno = EACCES;
 		return (void *)-1;

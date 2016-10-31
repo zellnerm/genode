@@ -15,11 +15,13 @@
 #define _CORE__INCLUDE__UTIL_H_
 
 /* Genode includes */
-#include <base/native_types.h>
 #include <rm_session/rm_session.h>
 #include <base/stdint.h>
-#include <base/printf.h>
+#include <base/log.h>
 #include <util/touch.h>
+
+/* base-internal includes */
+#include <base/internal/page_size.h>
 
 /* OKL4 includes */
 namespace Okl4 { extern "C" {
@@ -48,7 +50,7 @@ namespace Genode {
 	inline void panic(const char *s)
 	{
 		using namespace Okl4;
-		PDBG("Panic: %s", s);
+		error("Panic: ", s);
 		ENTER_KDB("> panic <");
 	}
 
@@ -56,13 +58,11 @@ namespace Genode {
 	{
 		using namespace Okl4;
 		if (!val) {
-			PERR("Assertion failed: %s", s);
+			error("assertion failed: ", s);
 			ENTER_KDB("Assertion failed");
 		}
 	}
 
-	constexpr size_t get_page_size_log2() { return 12; }
-	constexpr size_t get_page_size()      { return 1 << get_page_size_log2(); }
 	constexpr addr_t get_page_mask()      { return ~(get_page_size() - 1); }
 
 	inline size_t get_super_page_size_log2()
@@ -111,16 +111,6 @@ namespace Genode {
 	inline addr_t round_page(addr_t page)
 	{
 		return trunc_page(page + get_page_size() - 1);
-	}
-
-	inline void print_page_fault(const char *msg, addr_t pf_addr, addr_t pf_ip,
-	                             Rm_session::Fault_type pf_type,
-	                             unsigned long faulter_badge)
-	{
-		printf("%s (%s pf_addr=%p pf_ip=%p from %02lx)\n", msg,
-		       pf_type == Rm_session::WRITE_FAULT ? "WRITE" : "READ",
-		       (void *)pf_addr, (void *)pf_ip,
-		       faulter_badge);
 	}
 
 	inline addr_t map_src_addr(addr_t core_local, addr_t phys) { return phys; }

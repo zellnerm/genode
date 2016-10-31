@@ -15,7 +15,7 @@
 #define _INCLUDE__BASE__WEAK_PTR_H_
 
 #include <base/lock.h>
-#include <base/printf.h>
+#include <base/log.h>
 #include <util/list.h>
 
 namespace Genode {
@@ -140,8 +140,8 @@ class Genode::Weak_object_base
 		~Weak_object_base()
 		{
 			if (_list.first())
-				PERR("Weak object %p not destructed properly "
-				     "there are still dangling pointers to it", this);
+				error("Weak object ", this, " not destructed properly "
+				     "there are still dangling pointers to it");
 		}
 
 		void disassociate(Weak_ptr_base *ptr)
@@ -313,7 +313,7 @@ struct Genode::Weak_object : Genode::Weak_object_base
  * Locked pointer
  *
  * A locked pointer is constructed from a weak pointer. After construction,
- * its validity can (and should) be checked by calling the 'is_valid'
+ * its validity can (and should) be checked by calling the 'valid'
  * method. If the locked pointer is valid, the pointed-to object is known to
  * be locked until the locked pointer is destroyed. During this time, the
  * locked pointer can safely be de-referenced.
@@ -338,7 +338,15 @@ struct Genode::Locked_ptr : Genode::Locked_ptr_base
 	 * Only if valid, the locked pointer can be de-referenced. Otherwise,
 	 * the attempt will result in a null-pointer access.
 	 */
-	bool is_valid() const { return curr != nullptr; }
+	bool valid() const { return curr != nullptr; }
+
+	/**
+	 * Returns true if the locked pointer is valid
+	 *
+	 * \noapi
+	 * \deprecated use 'valid' instead
+	 */
+	bool is_valid() const { return valid(); }
 };
 
 

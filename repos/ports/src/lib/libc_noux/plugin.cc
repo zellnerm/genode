@@ -5,7 +5,7 @@
  */
 
 /*
- * Copyright (C) 2011-2013 Genode Labs GmbH
+ * Copyright (C) 2011-2016 Genode Labs GmbH
  *
  * This file is part of the Genode OS framework, which is distributed
  * under the terms of the GNU General Public License version 2.
@@ -15,11 +15,12 @@
 #include <util/construct_at.h>
 #include <util/misc_math.h>
 #include <util/arg_string.h>
-#include <base/printf.h>
+#include <base/log.h>
 #include <os/config.h>
 #include <rom_session/connection.h>
 #include <base/sleep.h>
 #include <dataspace/client.h>
+#include <region_map/client.h>
 
 /* noux includes */
 #include <noux_session/connection.h>
@@ -58,6 +59,12 @@
 #include <libc_mem_alloc.h>
 
 
+using Genode::log;
+using Genode::error;
+using Genode::warning;
+using Genode::Hex;
+
+
 enum { verbose = false };
 enum { verbose_signals = false };
 
@@ -94,13 +101,13 @@ class Noux_connection
 		Noux_connection() : _sysio(_obtain_sysio()) { }
 
 		/**
-		 * Return the capability of the local context-area RM session
+		 * Return the capability of the local stack-area region map
+		 *
+		 * \param ptr  some address within the stack-area
 		 */
-		Genode::Rm_session_capability context_area_rm_session()
+		Genode::Capability<Genode::Region_map> stack_area_region_map(void * const ptr)
 		{
-			using namespace Genode;
-			addr_t const addr = Native_config::context_area_virtual_base();
-			return _connection.lookup_rm_session(addr);
+			return _connection.lookup_region_map((Genode::addr_t)ptr);
 		}
 
 		Noux::Session *session() { return &_connection; }
@@ -147,7 +154,7 @@ static bool noux_syscall(Noux::Session::Syscall opcode)
 	while (!sysio()->pending_signals.empty()) {
 		Noux::Sysio::Signal signal = sysio()->pending_signals.get();
 		if (verbose_signals)
-			PDBG("received signal %d", signal);
+			log(__func__, ": received signal ", (int)signal);
 		if (signal_action[signal].sa_flags & SA_SIGINFO) {
 			memcpy(&saved_sysio, sysio(), sizeof(Noux::Sysio));
 			/* TODO: pass siginfo_t struct */
@@ -228,6 +235,19 @@ extern "C" struct passwd *getpwuid(uid_t uid)
 }
 
 
+extern "C" int getdtablesize()
+{
+	if (!noux_syscall(Noux::Session::SYSCALL_GETDTABLESIZE)) {
+		warning("getdtablesize syscall failed");
+		errno = ENOSYS;
+		return -1;
+	}
+
+	int n = sysio()->getdtablesize_out.n;
+	return n;
+}
+
+
 extern "C" uid_t getgid()
 {
 	sysio()->userinfo_in.request = Noux::Sysio::USERINFO_GET_GID;
@@ -268,7 +288,7 @@ extern "C" uid_t geteuid()
 void *sbrk(intptr_t increment)
 {
 	if (verbose)
-		PDBG("not implemented %ld", (long int)increment);
+		warning(__func__, " not implemented ", (long int)increment);
 	errno = ENOMEM;
 	return reinterpret_cast<void *>(-1);
 }
@@ -281,7 +301,7 @@ extern "C" int getrlimit(int resource, struct rlimit *rlim)
 		{
 			using namespace Genode;
 
-			Thread_base * me = Thread_base::myself();
+			Thread * me = Thread::myself();
 
 			if (!me)
 				break;
@@ -308,7 +328,7 @@ extern "C" int getrlimit(int resource, struct rlimit *rlim)
 			return 0;
 	}
 	errno = ENOSYS;
-	PDBG("not implemented %d", resource);
+	warning(__func__, " not implemented (resource=", resource, ")");
 	return -1;
 }
 
@@ -493,6 +513,7 @@ extern "C" int select(int nfds, fd_set *readfds, fd_set *writefds,
 #include <setjmp.h>
 
 
+static void * in_stack_area;
 static jmp_buf fork_jmp_buf;
 static Genode::Capability<Genode::Parent>::Raw new_parent;
 
@@ -506,7 +527,7 @@ extern "C" void fork_trampoline()
 {
 	/* reinitialize environment */
 	using namespace Genode;
-	env()->reinit(new_parent.dst, new_parent.local_name);
+	env()->reinit(new_parent);
 
 	/* reinitialize standard-output connection */
 	stdout_reconnect();
@@ -518,16 +539,25 @@ extern "C" void fork_trampoline()
 	/* reinitialize noux connection */
 	construct_at<Noux_connection>(noux_connection());
 
-	/* reinitialize main-thread object which implies reinit of context area */
-	auto context_area_rm = noux_connection()->context_area_rm_session();
-	env()->reinit_main_thread(context_area_rm);
+	/* reinitialize main-thread object which implies reinit of stack area */
+	auto stack_area_rm = noux_connection()->stack_area_region_map(in_stack_area);
+	Genode::env()->reinit_main_thread(stack_area_rm);
 
 	/* apply processor state that the forker had when he did the fork */
 	longjmp(fork_jmp_buf, 1);
 }
 
 
-extern "C" pid_t fork(void)
+static pid_t fork_result;
+
+
+/**
+ * Called once the component has left the entrypoint and exited the signal
+ * dispatch loop.
+ *
+ * This function is called from the context of the initial thread.
+ */
+static void suspended_callback()
 {
 	/* stack used for executing 'fork_trampoline' */
 	enum { STACK_SIZE = 8 * 1024 };
@@ -538,26 +568,45 @@ extern "C" pid_t fork(void)
 		/*
 		 * We got here via longjmp from 'fork_trampoline'.
 		 */
-		return 0;
+		fork_result = 0;
 
 	} else {
 
+		/*
+		 * save the current stack address used for re-initializing
+		 * the stack area during process bootstrap
+		 */
+		int dummy;
+		in_stack_area = &dummy;
+
 		/* got here during the normal control flow of the fork call */
-		sysio()->fork_in.ip              = (Genode::addr_t)(&fork_trampoline);
-		sysio()->fork_in.sp              = (Genode::addr_t)(&stack[STACK_SIZE]);
+		sysio()->fork_in.ip = (Genode::addr_t)(&fork_trampoline);
+		sysio()->fork_in.sp = Abi::stack_align((Genode::addr_t)&stack[STACK_SIZE]);
 		sysio()->fork_in.parent_cap_addr = (Genode::addr_t)(&new_parent);
 
 		if (!noux_syscall(Noux::Session::SYSCALL_FORK)) {
-			PERR("fork error %d", sysio()->error.general);
+			error("fork error ", (int)sysio()->error.general);
 			switch (sysio()->error.fork) {
-			case Noux::Sysio::FORK_NOMEM:       errno = ENOMEM; break;
+			case Noux::Sysio::FORK_NOMEM: errno = ENOMEM; break;
 			default: errno = EAGAIN;
 			}
-			return -1;
+			fork_result = -1;
+			return;
 		}
 
-		return sysio()->fork_out.pid;
+		fork_result = sysio()->fork_out.pid;
 	}
+}
+
+
+namespace Libc { void schedule_suspend(void (*suspended) ()); }
+
+
+extern "C" pid_t fork(void)
+{
+	Libc::schedule_suspend(suspended_callback);
+
+	return fork_result;
 }
 
 
@@ -577,7 +626,7 @@ extern "C" pid_t getppid(void) { return getpid(); }
 extern "C" int chmod(char const *path, mode_t mode)
 {
 	if (verbose)
-		PDBG("chmod '%s' to 0x%x not implemented", path, mode);
+		warning(__func__, ": chmod '", path, "' to ", Hex(mode), " not implemented");
 	return 0;
 }
 
@@ -609,7 +658,7 @@ extern "C" pid_t _wait4(pid_t pid, int *status, int options,
 int getrusage(int who, struct rusage *usage)
 {
 	if (verbose)
-		PDBG("not implemented");
+		warning(__func__, " not implemented");
 
 	errno = ENOSYS;
 	return -1;
@@ -619,7 +668,7 @@ int getrusage(int who, struct rusage *usage)
 void endpwent(void)
 {
 	if (verbose)
-		PDBG("not implemented");
+		warning(__func__, " not implemented");
 }
 
 
@@ -632,7 +681,7 @@ extern "C" void sync(void)
 extern "C" int kill(int pid, int sig)
 {
 	if (verbose_signals)
-		PDBG("pid = %d, sig = %d", pid, sig);
+		log(__func__, ": pid=", pid, ", sig=", sig);
 
 	sysio()->kill_in.pid = pid;
 	sysio()->kill_in.sig = Noux::Sysio::Signal(sig);
@@ -773,7 +822,7 @@ extern "C" int sigprocmask(int how, const sigset_t *set, sigset_t *oldset)
 			for (int sig = 1; sig < NSIG; sig++)
 				if (sigismember(set, sig)) {
 					if (verbose_signals)
-						PDBG("signal %d requested to get blocked", sig);
+						log(__func__, ": signal ", sig, " requested to get blocked");
 					sigaddset(&signal_mask, sig);
 				}
 			break;
@@ -781,7 +830,7 @@ extern "C" int sigprocmask(int how, const sigset_t *set, sigset_t *oldset)
 			for (int sig = 1; sig < NSIG; sig++)
 				if (sigismember(set, sig)) {
 					if (verbose_signals)
-						PDBG("signal %d requested to get unblocked", sig);
+						log(__func__, ": signal ", sig, " requested to get unblocked");
 					sigdelset(&signal_mask, sig);
 				}
 			break;
@@ -789,7 +838,7 @@ extern "C" int sigprocmask(int how, const sigset_t *set, sigset_t *oldset)
 			if (verbose_signals)
 				for (int sig = 1; sig < NSIG; sig++)
 					if (sigismember(set, sig))
-						PDBG("signal %d requested to get blocked", sig);
+						log(__func__, ": signal ", sig, " requested to get blocked");
 			signal_mask = *set;
 			break;
 		default:
@@ -810,7 +859,7 @@ extern "C" int _sigprocmask(int how, const sigset_t *set, sigset_t *oldset)
 extern "C" int _sigaction(int signum, const struct sigaction *act, struct sigaction *oldact)
 {
 	if (verbose_signals)
-		PDBG("signum = %d, handler = %p", signum, act ? act->sa_handler : 0);
+		log("signum=", signum, ", handler=", act ? act->sa_handler : nullptr);
 
 	if ((signum < 1) || (signum > NSIG)) {
 		errno = EINVAL;
@@ -882,20 +931,20 @@ namespace {
 				}
 			}
 
-			bool supports_access(const char *, int)              { return true; }
+			bool supports_access(const char *, int)                { return true; }
 			bool supports_execve(char const *, char *const[],
-			                     char *const[])                  { return true; }
-			bool supports_open(char const *, int)                { return true; }
-			bool supports_stat(char const *)                     { return true; }
-			bool supports_symlink(char const *, char const*)     { return true; }
-			bool supports_pipe()                                 { return true; }
-			bool supports_unlink(char const *)                   { return true; }
-			bool supports_readlink(const char *, char *, size_t) { return true; }
-			bool supports_rename(const char *, const char *)     { return true; }
-			bool supports_rmdir(char const *)                    { return true; }
-			bool supports_mkdir(const char *, mode_t)            { return true; }
-			bool supports_socket(int, int, int)                  { return true; }
-			bool supports_mmap()                                 { return true; }
+			                     char *const[])                    { return true; }
+			bool supports_open(char const *, int)                  { return true; }
+			bool supports_stat(char const *)                       { return true; }
+			bool supports_symlink(char const *, char const*)       { return true; }
+			bool supports_pipe()                                   { return true; }
+			bool supports_unlink(char const *)                     { return true; }
+			bool supports_readlink(const char *, char *, ::size_t) { return true; }
+			bool supports_rename(const char *, const char *)       { return true; }
+			bool supports_rmdir(char const *)                      { return true; }
+			bool supports_mkdir(const char *, mode_t)              { return true; }
+			bool supports_socket(int, int, int)                    { return true; }
+			bool supports_mmap()                                   { return true; }
 
 			int access(char const *, int);
 			Libc::File_descriptor *open(char const *, int);
@@ -913,7 +962,7 @@ namespace {
 			ssize_t getdirentries(Libc::File_descriptor *, char *, ::size_t, ::off_t *);
 			::off_t lseek(Libc::File_descriptor *, ::off_t offset, int whence);
 			ssize_t read(Libc::File_descriptor *, void *, ::size_t);
-			ssize_t readlink(const char *path, char *buf, size_t bufsiz);
+			ssize_t readlink(const char *path, char *buf, ::size_t bufsiz);
 			int rename(const char *oldpath, const char *newpath);
 			int rmdir(char const *path);
 			int stat(char const *, struct stat *);
@@ -955,7 +1004,8 @@ namespace {
 	int Plugin::access(char const *pathname, int mode)
 	{
 		if (verbose)
-			PDBG("access '%s' (mode=%x) called, not implemented", pathname, mode);
+			log(__func__, ": access '", pathname, "' (mode=", Hex(mode), ") "
+			    "called, not implemented");
 
 		struct stat stat;
 		if (::stat(pathname, &stat) == 0)
@@ -970,19 +1020,19 @@ namespace {
 	                   char *const envp[])
 	{
 		if (verbose) {
-			PDBG("filename=%s", filename);
+			log(__func__, ": filename=", filename);
 
 			for (int i = 0; argv[i]; i++)
-				PDBG("argv[%d]='%s'", i, argv[i]);
+				log(__func__, "argv[", i, "]='", Genode::Cstring(argv[i]), "'");
 
 			for (int i = 0; envp[i]; i++)
-				PDBG("envp[%d]='%s'", i, envp[i]);
+				log(__func__, "envp[", i, "]='", Genode::Cstring(envp[i]), "'");
 		}
 
 		Genode::strncpy(sysio()->execve_in.filename, filename, sizeof(sysio()->execve_in.filename));
 		if (!serialize_string_array(argv, sysio()->execve_in.args,
 		                            sizeof(sysio()->execve_in.args))) {
-		    PERR("execve: argument buffer exceeded");
+		    error("execve: argument buffer exceeded");
 		    errno = E2BIG;
 		    return -1;
 		}
@@ -995,7 +1045,7 @@ namespace {
 
 		if (!getcwd(&(sysio()->execve_in.env[noux_cwd_len]),
 		            sizeof(sysio()->execve_in.env) - noux_cwd_len)) {
-		    PERR("execve: environment buffer exceeded");
+		    error("execve: environment buffer exceeded");
 		    errno = E2BIG;
 		    return -1;
 		}
@@ -1004,13 +1054,13 @@ namespace {
 
 		if (!serialize_string_array(envp, &(sysio()->execve_in.env[noux_cwd_len]),
                                    sizeof(sysio()->execve_in.env) - noux_cwd_len)) {
-		    PERR("execve: environment buffer exceeded");
+		    error("execve: environment buffer exceeded");
 		    errno = E2BIG;
 		    return -1;
 		}
 
 		if (!noux_syscall(Noux::Session::SYSCALL_EXECVE)) {
-			PWRN("exec syscall failed for path \"%s\"", filename);
+			warning("exec syscall failed for path \", filename, \"");
 			switch (sysio()->error.execve) {
 			case Noux::Sysio::EXECVE_NONEXISTENT: errno = ENOENT; break;
 			case Noux::Sysio::EXECVE_NOMEM:       errno = ENOMEM; break;
@@ -1030,7 +1080,7 @@ namespace {
 	int Plugin::stat(char const *path, struct stat *buf)
 	{
 		if (verbose)
-			PDBG("path = %s", path);
+			log(__func__, ": path=", path);
 
 		if ((path == NULL) or (buf == NULL)) {
 			errno = EFAULT;
@@ -1041,12 +1091,12 @@ namespace {
 
 		if (!noux_syscall(Noux::Session::SYSCALL_STAT)) {
 			if (verbose)
-				PWRN("stat syscall failed for path \"%s\"", path);
+				warning("stat syscall failed for path \"", path, "\"");
 			switch (sysio()->error.stat) {
-			case Vfs::Directory_service::STAT_OK: /* never reached */
-			case Vfs::Directory_service::STAT_ERR_NO_ENTRY: errno = ENOENT; break;
+			case Vfs::Directory_service::STAT_ERR_NO_ENTRY: errno = ENOENT; return -1;
+			case Vfs::Directory_service::STAT_ERR_NO_PERM:  errno = EACCES; return -1;
+			case Vfs::Directory_service::STAT_OK: break; /* never reached */
 			}
-			return -1;
 		}
 
 		_sysio_to_stat_struct(sysio(), buf);
@@ -1057,7 +1107,7 @@ namespace {
 	Libc::File_descriptor *Plugin::open(char const *pathname, int flags)
 	{
 		if (Genode::strlen(pathname) + 1 > sizeof(sysio()->open_in.path)) {
-			PDBG("ENAMETOOLONG");
+			log(__func__, ": ENAMETOOLONG");
 			errno = ENAMETOOLONG;
 			return 0;
 		}
@@ -1109,11 +1159,11 @@ namespace {
 	int Plugin::symlink(const char *oldpath, const char *newpath)
 	{
 		if (verbose)
-			PDBG("%s -> %s", newpath, oldpath);
+			log(__func__, ": ", newpath, " -> ", oldpath);
 
 		if ((Genode::strlen(oldpath) + 1 > sizeof(sysio()->symlink_in.oldpath)) ||
 		    (Genode::strlen(newpath) + 1 > sizeof(sysio()->symlink_in.newpath))) {
-			PDBG("ENAMETOOLONG");
+			log(__func__, ": ENAMETOOLONG");
 			errno = ENAMETOOLONG;
 			return 0;
 		}
@@ -1121,9 +1171,16 @@ namespace {
 		Genode::strncpy(sysio()->symlink_in.oldpath, oldpath, sizeof(sysio()->symlink_in.oldpath));
 		Genode::strncpy(sysio()->symlink_in.newpath, newpath, sizeof(sysio()->symlink_in.newpath));
 		if (!noux_syscall(Noux::Session::SYSCALL_SYMLINK)) {
-			PERR("symlink error");
-			/* XXX set errno */
-			return -1;
+			warning("symlink syscall failed for path \"", newpath, "\"");
+			typedef Vfs::Directory_service::Symlink_result Result;
+			switch (sysio()->error.symlink) {
+			case Result::SYMLINK_ERR_NO_ENTRY:      errno = ENOENT;        return -1;
+			case Result::SYMLINK_ERR_EXISTS:        errno = EEXIST;        return -1;
+			case Result::SYMLINK_ERR_NO_SPACE:      errno = ENOSPC;        return -1;
+			case Result::SYMLINK_ERR_NO_PERM:       errno = EPERM;         return -1;
+			case Result::SYMLINK_ERR_NAME_TOO_LONG: errno = ENAMETOOLONG;  return -1;
+			case Result::SYMLINK_OK: break;
+			}
 		}
 
 		return 0;
@@ -1140,6 +1197,8 @@ namespace {
 	ssize_t Plugin::write(Libc::File_descriptor *fd, const void *buf,
 	                      ::size_t count)
 	{
+		if (!buf) { errno = EFAULT; return -1; }
+
 		/* remember original len for the return value */
 		int const orig_count = count;
 
@@ -1177,6 +1236,8 @@ namespace {
 
 	ssize_t Plugin::read(Libc::File_descriptor *fd, void *buf, ::size_t count)
 	{
+		if (!buf) { errno = EFAULT; return -1; }
+
 		Genode::size_t sum_read_count = 0;
 
 		while (count > 0) {
@@ -1228,7 +1289,7 @@ namespace {
 	{
 		sysio()->close_in.fd = noux_fd(fd->context);
 		if (!noux_syscall(Noux::Session::SYSCALL_CLOSE)) {
-			PERR("close error");
+			error("close error");
 			/* XXX set errno */
 			return -1;
 		}
@@ -1254,7 +1315,7 @@ namespace {
 		case TIOCGETA:
 			{
 				if (verbose)
-					PDBG("TIOCGETA - argp=0x%p", argp);
+					log(__func__, ": TIOCGETA - argp=", (void *)argp);
 				::termios *termios = (::termios *)argp;
 
 				termios->c_iflag = 0;
@@ -1305,7 +1366,7 @@ namespace {
 		case FIONBIO:
 			{
 				if (verbose)
-					PDBG("FIONBIO - *argp=%d", *argp);
+					log(__func__, ": FIONBIO - *argp=", *argp);
 
 				sysio()->ioctl_in.request = Vfs::File_io_service::IOCTL_OP_FIONBIO;
 				sysio()->ioctl_in.argp = argp ? *(int*)argp : 0;
@@ -1323,7 +1384,7 @@ namespace {
 
 		default:
 
-			PWRN("unsupported ioctl (request=0x%x)", request);
+			warning("unsupported ioctl (request=", Hex(request), ")");
 			break;
 		}
 
@@ -1378,7 +1439,7 @@ namespace {
 	{
 		/* perform syscall */
 		if (!noux_syscall(Noux::Session::SYSCALL_PIPE)) {
-			PERR("pipe error");
+			error("pipe error");
 			/* XXX set errno */
 			return -1;
 		}
@@ -1397,7 +1458,7 @@ namespace {
 		sysio()->dup2_in.to_fd = -1;
 
 		if (!noux_syscall(Noux::Session::SYSCALL_DUP2)) {
-			PERR("dup error");
+			error("dup error");
 			/* XXX set errno */
 			return 0;
 		}
@@ -1420,7 +1481,7 @@ namespace {
 
 		/* perform syscall */
 		if (!noux_syscall(Noux::Session::SYSCALL_DUP2)) {
-			PERR("dup2 error");
+			error("dup2 error");
 			/* XXX set errno */
 			return -1;
 		}
@@ -1433,7 +1494,7 @@ namespace {
 	{
 		sysio()->fstat_in.fd = noux_fd(fd->context);
 		if (!noux_syscall(Noux::Session::SYSCALL_FSTAT)) {
-			PERR("fstat error");
+			error("fstat error");
 			/* XXX set errno */
 			return -1;
 		}
@@ -1446,7 +1507,7 @@ namespace {
 	int Plugin::fsync(Libc::File_descriptor *fd)
 	{
 		if (verbose)
-			PDBG("not implemented");
+			warning(__func__, ": not implemented");
 		return 0;
 	}
 
@@ -1490,7 +1551,7 @@ namespace {
 				 * duplicate.
 				 */
 				if (dup2(fd, new_fd) == -1) {
-					PERR("Plugin::fcntl: dup2 unexpectedly failed");
+					error("Plugin::fcntl: dup2 unexpectedly failed");
 					errno = EINVAL;
 					return -1;
 				}
@@ -1505,7 +1566,7 @@ namespace {
 			 * XXX: FD_CLOEXEC not yet supported
 			 */
 			if (verbose)
-				PWRN("fcntl(F_GETFD) not implemented, returning 0");
+				warning("fcntl(F_GETFD) not implemented, returning 0");
 			return 0;
 
 		case F_SETFD:
@@ -1515,26 +1576,26 @@ namespace {
 
 		case F_GETFL:
 			if (verbose)
-				PINF("fcntl: F_GETFL for libc_fd=%d", fd->libc_fd);
+				log("fcntl: F_GETFL for libc_fd=", fd->libc_fd);
 			sysio()->fcntl_in.cmd = Noux::Sysio::FCNTL_CMD_GET_FILE_STATUS_FLAGS;
 			break;
 
 		case F_SETFL:
 			if (verbose)
-				PINF("fcntl: F_SETFL for libc_fd=%d", fd->libc_fd);
+				log("fcntl: F_SETFL for libc_fd=", fd->libc_fd);
 			sysio()->fcntl_in.cmd      = Noux::Sysio::FCNTL_CMD_SET_FILE_STATUS_FLAGS;
 			sysio()->fcntl_in.long_arg = arg;
 			break;
 
 		default:
-			PERR("fcntl: unsupported command %d", cmd);
+			error("fcntl: unsupported command ", cmd);
 			errno = EINVAL;
 			return -1;
 		};
 
 		/* invoke system call */
 		if (!noux_syscall(Noux::Session::SYSCALL_FCNTL)) {
-			PWRN("fcntl failed (libc_fd= %d, cmd=%x)", fd->libc_fd, cmd);
+			warning("fcntl failed (libc_fd=", fd->libc_fd, ", cmd=", Hex(cmd), ")");
 			switch (sysio()->error.fcntl) {
 				case Noux::Sysio::FCNTL_ERR_CMD_INVALID: errno = EINVAL; break;
 				default:
@@ -1555,7 +1616,7 @@ namespace {
 	                              ::size_t nbytes, ::off_t *basep)
 	{
 		if (nbytes < sizeof(struct dirent)) {
-			PERR("buf too small");
+			error("buf too small");
 			return -1;
 		}
 
@@ -1569,7 +1630,7 @@ namespace {
 
 			case Vfs::Directory_service::ERR_FD_INVALID:
 				errno = EBADF;
-				PERR("dirent: ERR_FD_INVALID");
+				error("dirent: ERR_FD_INVALID");
 				return -1;
 
 			case Vfs::Directory_service::NUM_GENERAL_ERRORS: return -1;
@@ -1617,7 +1678,7 @@ namespace {
 
 			case Vfs::Directory_service::ERR_FD_INVALID:
 				errno = EBADF;
-				PERR("lseek: ERR_FD_INVALID");
+				error("lseek: ERR_FD_INVALID");
 				return -1;
 
 			case Vfs::Directory_service::NUM_GENERAL_ERRORS: return -1;
@@ -1633,7 +1694,7 @@ namespace {
 		Genode::strncpy(sysio()->unlink_in.path, path, sizeof(sysio()->unlink_in.path));
 
 		if (!noux_syscall(Noux::Session::SYSCALL_UNLINK)) {
-			PWRN("unlink syscall failed for path \"%s\"", path);
+			warning("unlink syscall failed for path \"", path, "\"");
 			typedef Vfs::Directory_service::Unlink_result Result;
 			switch (sysio()->error.unlink) {
 			case Result::UNLINK_ERR_NO_ENTRY:  errno = ENOENT;    break;
@@ -1654,18 +1715,22 @@ namespace {
 	}
 
 
-	ssize_t Plugin::readlink(const char *path, char *buf, size_t bufsiz)
+	ssize_t Plugin::readlink(const char *path, char *buf, ::size_t bufsiz)
 	{
 		if (verbose)
-			PDBG("path = %s, bufsiz = %zu", path, bufsiz);
+			log(__func__, ": path=", path, ", bufsiz=", bufsiz);
 
 		Genode::strncpy(sysio()->readlink_in.path, path, sizeof(sysio()->readlink_in.path));
 		sysio()->readlink_in.bufsiz = bufsiz;
 
 		if (!noux_syscall(Noux::Session::SYSCALL_READLINK)) {
-			PWRN("readlink syscall failed for \"%s\"", path);
-			/* XXX set errno */
-			return -1;
+			warning("readlink syscall failed for path \"", path, "\"");
+			typedef Vfs::Directory_service::Readlink_result Result;
+			switch (sysio()->error.readlink) {
+			case Result::READLINK_ERR_NO_ENTRY: errno = ENOENT; return -1;
+			case Result::READLINK_ERR_NO_PERM:  errno = EPERM;  return -1;
+			case Result::READLINK_OK: break;
+			}
 		}
 
 		ssize_t size = Genode::min((size_t)sysio()->readlink_out.count, bufsiz);
@@ -1673,7 +1738,7 @@ namespace {
 		Genode::memcpy(buf, sysio()->readlink_out.chunk, size);
 
 		if (verbose)
-			PDBG("result = %s", buf);
+			log(__func__, ": result=", Genode::Cstring(buf));
 
 		return size;
 	}
@@ -1685,7 +1750,7 @@ namespace {
 		Genode::strncpy(sysio()->rename_in.to_path,   to_path,   sizeof(sysio()->rename_in.to_path));
 
 		if (!noux_syscall(Noux::Session::SYSCALL_RENAME)) {
-			PWRN("rename syscall failed for \"%s\" -> \"%s\"", from_path, to_path);
+			warning("rename syscall failed for \"", from_path, "\" -> \"", to_path, "\"");
 			switch (sysio()->error.rename) {
 			case Vfs::Directory_service::RENAME_ERR_NO_ENTRY: errno = ENOENT; break;
 			case Vfs::Directory_service::RENAME_ERR_CROSS_FS: errno = EXDEV;  break;
@@ -1704,7 +1769,7 @@ namespace {
 		Genode::strncpy(sysio()->mkdir_in.path, path, sizeof(sysio()->mkdir_in.path));
 
 		if (!noux_syscall(Noux::Session::SYSCALL_MKDIR)) {
-			PWRN("mkdir syscall failed for \"%s\" mode=0x%x", path, (int)mode);
+			warning("mkdir syscall failed for \"", path, "\" mode=", Hex(mode));
 			switch (sysio()->error.mkdir) {
 			case Vfs::Directory_service::MKDIR_ERR_EXISTS:        errno = EEXIST;       break;
 			case Vfs::Directory_service::MKDIR_ERR_NO_ENTRY:      errno = ENOENT;       break;
@@ -1723,13 +1788,13 @@ namespace {
 	                   Libc::File_descriptor *fd, ::off_t offset)
 	{
 		if (prot != PROT_READ) {
-			PERR("mmap for prot=%x not supported", prot);
+			error("mmap for prot=", Hex(prot), " not supported");
 			errno = EACCES;
 			return (void *)-1;
 		}
 
 		if (addr_in != 0) {
-			PERR("mmap for predefined address not supported");
+			error("mmap for predefined address not supported");
 			errno = EINVAL;
 			return (void *)-1;
 		}
@@ -1741,7 +1806,7 @@ namespace {
 		}
 
 		if (::pread(fd->libc_fd, addr, length, offset) < 0) {
-			PERR("mmap could not obtain file content");
+			error("mmap could not obtain file content");
 			::munmap(addr, length);
 			errno = EACCES;
 			return (void *)-1;
@@ -1888,12 +1953,15 @@ namespace {
 
 		if (!noux_syscall(Noux::Session::SYSCALL_CONNECT)) {
 			switch (sysio()->error.connect) {
-			case Noux::Sysio::CONNECT_ERR_AGAIN:        errno = EAGAIN;      break;
-			case Noux::Sysio::CONNECT_ERR_ALREADY:      errno = EALREADY;    break;
-			case Noux::Sysio::CONNECT_ERR_ADDR_IN_USE:  errno = EADDRINUSE;  break;
-			case Noux::Sysio::CONNECT_ERR_IN_PROGRESS:  errno = EINPROGRESS; break;
-			case Noux::Sysio::CONNECT_ERR_IS_CONNECTED: errno = EISCONN;     break;
-			default:                                    errno = 0;           break;
+			case Noux::Sysio::CONNECT_ERR_AGAIN:        errno = EAGAIN;       break;
+			case Noux::Sysio::CONNECT_ERR_ALREADY:      errno = EALREADY;     break;
+			case Noux::Sysio::CONNECT_ERR_ADDR_IN_USE:  errno = EADDRINUSE;   break;
+			case Noux::Sysio::CONNECT_ERR_IN_PROGRESS:  errno = EINPROGRESS;  break;
+			case Noux::Sysio::CONNECT_ERR_IS_CONNECTED: errno = EISCONN;      break;
+			case Noux::Sysio::CONNECT_ERR_RESET:        errno = ECONNRESET;   break;
+			case Noux::Sysio::CONNECT_ERR_ABORTED:      errno = ECONNABORTED; break;
+			case Noux::Sysio::CONNECT_ERR_NO_ROUTE:     errno = EHOSTUNREACH; break;
+			default:                                    errno = 0;            break;
 			}
 			return -1;
 		}
@@ -1941,6 +2009,8 @@ namespace {
 
 	ssize_t Plugin::recv(Libc::File_descriptor *fd, void *buf, ::size_t len, int flags)
 	{
+		if (!buf) { errno = EFAULT; return -1; }
+
 		Genode::size_t sum_recv_count = 0;
 
 		while (len > 0) {
@@ -1979,9 +2049,11 @@ namespace {
 	}
 
 
-	ssize_t Plugin::recvfrom(Libc::File_descriptor *fd, void *buf, size_t len, int flags,
+	ssize_t Plugin::recvfrom(Libc::File_descriptor *fd, void *buf, ::size_t len, int flags,
 	                         struct sockaddr *src_addr, socklen_t *addrlen)
 	{
+		if (!buf) { errno = EFAULT; return -1; }
+
 		Genode::size_t sum_recvfrom_count = 0;
 
 		while (len > 0) {
@@ -2031,6 +2103,8 @@ namespace {
 
 	ssize_t Plugin::send(Libc::File_descriptor *fd, const void *buf, ::size_t len, int flags)
 	{
+		if (!buf) { errno = EFAULT; return -1; }
+
 		/* remember original len for the return value */
 		int const orig_count = len;
 		char *src = (char *)buf;
@@ -2044,7 +2118,7 @@ namespace {
 			Genode::memcpy(sysio()->send_in.buf, src, curr_len);
 
 			if (!noux_syscall(Noux::Session::SYSCALL_SEND)) {
-				PERR("write error %d", sysio()->error.general);
+				error("write error ", (int)sysio()->error.general);
 				switch (sysio()->error.send) {
 				case Noux::Sysio::SEND_ERR_AGAIN:            errno = EAGAIN;      break;
 				case Noux::Sysio::SEND_ERR_WOULD_BLOCK:      errno = EWOULDBLOCK; break;
@@ -2067,6 +2141,8 @@ namespace {
 	ssize_t Plugin::sendto(Libc::File_descriptor *fd, const void *buf, size_t len, int flags,
 			const struct sockaddr *dest_addr, socklen_t addrlen)
 	{
+		if (!buf) { errno = EFAULT; return -1; }
+
 		int const orig_count = len;
 
 		if (addrlen > sizeof (sysio()->sendto_in.dest_addr)) {
@@ -2166,12 +2242,12 @@ void init_libc_noux(void)
 	for (unsigned i = 0; arg_buf[i] && (i < ARG_BUF_SIZE - 2); ) {
 
 		if (i >= ARG_BUF_SIZE - 2) {
-			PWRN("command-line argument buffer exceeded\n");
+			warning("command-line argument buffer exceeded");
 			break;
 		}
 
 		if (argc >= MAX_ARGS - 1) {
-			PWRN("number of command-line arguments exceeded\n");
+			warning("number of command-line arguments exceeded");
 			break;
 		}
 
@@ -2228,7 +2304,7 @@ void init_libc_noux(void)
 	 * Genodes core/main.cc with GCC in Noux.
 	 */
 	enum { STACK_SIZE = 32UL * 1024 * sizeof(Genode::addr_t) };
-	Genode::Thread_base::myself()->stack_size(STACK_SIZE);
+	Genode::Thread::myself()->stack_size(STACK_SIZE);
 }
 
 

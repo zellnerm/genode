@@ -27,14 +27,12 @@ using namespace Genode;
 const char *config = " \
 <config> \
     <parent-provides> \
-        <service name=\"CAP\"/> \
         <service name=\"CPU\"/> \
         <service name=\"LOG\"/> \
         <service name=\"PD\"/> \
         <service name=\"RAM\"/> \
         <service name=\"RM\"/> \
         <service name=\"ROM\"/> \
-        <service name=\"SIGNAL\"/> \
         <service name=\"Timer\"/> \
         <service name=\"Nitpicker\"/> \
     </parent-provides> \
@@ -109,12 +107,12 @@ void PluginStarter::_start_plugin(QString &file_name, QByteArray const &file_buf
 
 		uint32_t file_size = *(uint32_t*)(file_buf.constData() + file_buf.size() - sizeof(uint32_t));
 
-		PDBG("file_size_uncompressed = %u", file_size);
+		Genode::log(__func__, ": file_size_uncompressed=", file_size);
 
-		size_t ram_quota = Arg_string::find_arg(_args.constData(), "ram_quota").ulong_value(0) + file_size;
+		Genode::size_t ram_quota = Arg_string::find_arg(_args.constData(), "ram_quota").ulong_value(0) + file_size;
 
 		if ((long)env()->ram_session()->avail() - (long)ram_quota < QPluginWidget::RAM_QUOTA) {
-			PERR("quota exceeded");
+			Genode::error("quota exceeded");
 			_plugin_loading_state = QUOTA_EXCEEDED_ERROR;
 			return;
 		}
@@ -137,7 +135,7 @@ void PluginStarter::_start_plugin(QString &file_name, QByteArray const &file_buf
 
 			/* enable gzip format detection */
 			if (inflateInit2(&zs, 16 + MAX_WBITS) != Z_OK) {
-				PERR("inflateInit2() failed");
+				Genode::error("inflateInit2() failed");
 				_plugin_loading_state = INFLATE_ERROR;
 
 				inflateEnd(&zs);
@@ -147,7 +145,7 @@ void PluginStarter::_start_plugin(QString &file_name, QByteArray const &file_buf
 
 			/* uncompress */
 			if (inflate(&zs, Z_SYNC_FLUSH) != Z_STREAM_END) {
-				PERR("inflate() failed");
+				Genode::error("inflate() failed");
 				_plugin_loading_state = INFLATE_ERROR;
 
 				inflateEnd(&zs);
@@ -161,7 +159,7 @@ void PluginStarter::_start_plugin(QString &file_name, QByteArray const &file_buf
 			_pc->commit_rom_module(file_name.toUtf8().constData());
 		}
 	} else {
-		size_t ram_quota = Arg_string::find_arg(_args.constData(), "ram_quota").ulong_value(0);
+		Genode::size_t ram_quota = Arg_string::find_arg(_args.constData(), "ram_quota").ulong_value(0);
 
 		if ((long)env()->ram_session()->avail() - (long)ram_quota < QPluginWidget::RAM_QUOTA) {
 			_plugin_loading_state = QUOTA_EXCEEDED_ERROR;

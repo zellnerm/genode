@@ -11,12 +11,17 @@
  * under the terms of the GNU General Public License version 2.
  */
 
+/* local includes */
 #include <linker.h>
+#include <base/internal/page_size.h>
 
-#include <base/allocator_avl.h>
-#include <os/attached_rom_dataspace.h>
-#include <rm_session/connection.h>
+/* Genode includes */
 #include <util/construct_at.h>
+#include <base/allocator_avl.h>
+#include <base/env.h>
+#include <os/attached_rom_dataspace.h>
+#include <region_map/client.h>
+#include <util/retry.h>
 
 char const *Linker::ELFMAG = "\177ELF";
 
@@ -32,12 +37,16 @@ namespace Linker
 /**
  * Managed dataspace for ELF files (singelton)
  */
-class Linker::Rm_area : public Rm_connection
+class Linker::Rm_area
 {
+	public:
+
+		typedef Region_map_client::Local_addr      Local_addr;
+		typedef Region_map_client::Region_conflict Region_conflict;
+
 	private:
 
-		/* size of dataspace */
-		enum { RESERVATION = 160 * 1024 * 1024 };
+		Region_map_client _rm;
 
 		addr_t        _base;  /* base address of dataspace */
 		Allocator_avl _range; /* VM range allocator */
@@ -45,12 +54,10 @@ class Linker::Rm_area : public Rm_connection
 	protected:
 
 		Rm_area(addr_t base)
-		: Rm_connection(0, RESERVATION), _range(env()->heap())
+		: _rm(env()->pd_session()->linker_area()), _range(env()->heap())
 		{
-			on_destruction(KEEP_OPEN);
-
-			_base = (addr_t) env()->rm_session()->attach_at(dataspace(), base);
-			_range.add_range(base, RESERVATION);
+			_base = (addr_t) env()->rm_session()->attach_at(_rm.dataspace(), base);
+			_range.add_range(base, Pd_session::LINKER_AREA_SIZE);
 		}
 
 	public:
@@ -80,10 +87,14 @@ class Linker::Rm_area : public Rm_connection
 		{
 			addr_t addr = vaddr;
 
-			if (addr && (_range.alloc_addr(size, addr).is_error()))
+			if (addr && (_range.alloc_addr(size, addr).error()))
 				throw Region_conflict();
-			else if (!addr && _range.alloc_aligned(size, (void **)&addr, 12).is_error())
+			else if (!addr &&
+			         _range.alloc_aligned(size, (void **)&addr,
+			                              get_page_size_log2()).error())
+			{
 				throw Region_conflict();
+			}
 
 			return addr;
 		}
@@ -91,21 +102,32 @@ class Linker::Rm_area : public Rm_connection
 		void free_region(addr_t vaddr) { _range.free((void *)vaddr); }
 
 		/**
-		 * Overwritten from 'Rm_connection'
+		 * Overwritten from 'Region_map_client'
 		 */
 		Local_addr attach_at(Dataspace_capability ds, addr_t local_addr,
-		                     size_t size = 0, off_t offset = 0) {
-			return Rm_connection::attach_at(ds, local_addr - _base, size, offset); }
+		                     size_t size = 0, off_t offset = 0)
+		{
+			return retry<Region_map::Out_of_metadata>(
+				[&] () {
+					return _rm.attach_at(ds, local_addr - _base, size, offset);
+				},
+				[&] () { env()->parent()->upgrade(env()->pd_session_cap(), "ram_quota=8K"); });
+		}
 
 		/**
-		 * Overwritten from 'Rm_connection'
+		 * Overwritten from 'Region_map_client'
 		 */
 		Local_addr attach_executable(Dataspace_capability ds, addr_t local_addr,
-		                             size_t size = 0, off_t offset = 0) {
-			return Rm_connection::attach_executable(ds, local_addr - _base, size, offset); }
+		                             size_t size = 0, off_t offset = 0)
+		{
+			return retry<Region_map::Out_of_metadata>(
+				[&] () {
+					return _rm.attach_executable(ds, local_addr - _base, size, offset);
+				},
+				[&] () { env()->parent()->upgrade(env()->pd_session_cap(), "ram_quota=8K"); });
+		}
 
-		void detach(Local_addr local_addr) {
-			Rm_connection::detach((addr_t)local_addr - _base); }
+		void detach(Local_addr local_addr) { _rm.detach((addr_t)local_addr - _base); }
 };
 
 
@@ -139,12 +161,12 @@ struct Linker::Elf_file : File
 	bool check_compat(Elf::Ehdr const *ehdr)
 	{
 		if (memcmp(ehdr, ELFMAG, SELFMAG) != 0) {
-			PERR("LD: binary is not an ELF");
+			Genode::error("LD: binary is not an ELF");
 			return false;
 		}
 
 		if (ehdr->e_ident[EI_CLASS] != ELFCLASS) {
-			PERR("LD: support for 32/64-bit objects only");
+			Genode::error("LD: support for 32/64-bit objects only");
 			return false;
 		}
 
@@ -193,7 +215,7 @@ struct Linker::Elf_file : File
 				continue;
 
 			if (ph->p_align & (0x1000 - 1)) {
-				PERR("LD: Unsupported alignment %p", (void *)ph->p_align);
+				Genode::error("LD: Unsupported alignment ", (void *)ph->p_align);
 				throw Incompatible();
 			}
 
@@ -222,8 +244,9 @@ struct Linker::Elf_file : File
 		reloc_base = (start == reloc_base) ?  0 : reloc_base;
 
 		if (verbose_loading)
-			PDBG("reloc_base: " EFMT " start: " EFMT " end: " EFMT,
-			     reloc_base, start, reloc_base + start + size);
+			Genode::log("LD: reloc_base: ", Genode::Hex(reloc_base),
+			            " start: ", Genode::Hex(start),
+			            " end: ", Genode::Hex(reloc_base + start + size));
 
 		for (unsigned i = 0; i < p.count; i++) {
 			Elf::Phdr *ph = &p.phdr[i];
@@ -235,7 +258,7 @@ struct Linker::Elf_file : File
 				load_segment_rw(*ph, i);
 
 			else {
-				PERR("LD: Non-RW/RX segment");
+				Genode::error("LD: Non-RW/RX segment");
 				throw Invalid_file();
 			}
 		}
@@ -299,9 +322,10 @@ struct Linker::Elf_file : File
 File const *Linker::load(char const *path, bool load)
 {
 	if (verbose_loading)
-		PDBG("loading: %s (PHDRS only: %s)", path, load ? "no" : "yes");
+		Genode::log("LD loading: ", path, " "
+		            "(PHDRS only: ", load ? "no" : "yes", ")");
 
-	Elf_file *file = new(env()->heap()) Elf_file(Linker::file(path), load);
+	Elf_file *file = new (env()->heap()) Elf_file(Linker::file(path), load);
 	return file;
 }
 

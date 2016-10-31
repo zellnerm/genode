@@ -135,7 +135,7 @@ class Wm::Decorator_content_registry
 			return _lookup(view_handle).win_id;
 		}
 
-		bool is_registered(Nitpicker::Session::View_handle view_handle) const
+		bool registered(Nitpicker::Session::View_handle view_handle) const
 		{
 			try { lookup(view_handle); return true; } catch (...) { }
 			return false;
@@ -163,15 +163,13 @@ struct Wm::Decorator_nitpicker_session : Genode::Rpc_object<Nitpicker::Session>,
 
 	Nitpicker::Connection _nitpicker_session { "decorator" };
 
+	Genode::Signal_context_capability _mode_sigh;
+
 	typedef Nitpicker::Session::Command_buffer Command_buffer;
 
 	Attached_ram_dataspace _command_ds { &_ram, sizeof(Command_buffer) };
 
 	Command_buffer &_command_buffer = *_command_ds.local_addr<Command_buffer>();
-
-	Input::Session_client _nitpicker_input { _nitpicker_session.input_session() };
-
-	Attached_dataspace _nitpicker_input_ds { _nitpicker_input.dataspace() };
 
 	Reporter &_pointer_reporter;
 
@@ -187,6 +185,11 @@ struct Wm::Decorator_nitpicker_session : Genode::Rpc_object<Nitpicker::Session>,
 	Entrypoint &_ep;
 
 	Allocator &_md_alloc;
+
+	/* Nitpicker::Connection requires a valid input session */
+	Input::Session_component  _dummy_input_component;
+	Input::Session_capability _dummy_input_component_cap =
+		_ep.manage(_dummy_input_component);
 
 	Signal_rpc_member<Decorator_nitpicker_session>
 		_input_dispatcher { _ep, *this, &Decorator_nitpicker_session::_input_handler };
@@ -210,23 +213,13 @@ struct Wm::Decorator_nitpicker_session : Genode::Rpc_object<Nitpicker::Session>,
 		_content_callback(content_callback),
 		_ep(ep), _md_alloc(md_alloc)
 	{
-		_nitpicker_input.sigh(_input_dispatcher);
+		_nitpicker_session.input()->sigh(_input_dispatcher);
 	}
 
 	void _input_handler(unsigned)
 	{
-		Input::Event const * const events =
-			_nitpicker_input_ds.local_addr<Input::Event>();
-
-		while (_nitpicker_input.is_pending()) {
-
-			size_t const num_events = _nitpicker_input.flush();
-
-			/* we trust nitpicker to return a valid number of events */
-
-			for (size_t i = 0; i < num_events; i++) {
-
-				Input::Event const &ev = events[i];
+		while (_nitpicker_session.input()->pending())
+			_nitpicker_session.input()->for_each_event([&] (Input::Event const &ev) {
 
 				if (ev.type() == Input::Event::MOTION) {
 
@@ -257,8 +250,7 @@ struct Wm::Decorator_nitpicker_session : Genode::Rpc_object<Nitpicker::Session>,
 				}
 
 				_window_layouter_input.submit(ev);
-			}
-		}
+			});
 	}
 
 	void _execute_command(Command const &cmd)
@@ -379,7 +371,7 @@ struct Wm::Decorator_nitpicker_session : Genode::Rpc_object<Nitpicker::Session>,
 		 * Deny input to the decorator. User input referring to the
 		 * window decorations is routed to the window manager.
 		 */
-		return Input::Session_capability();
+		return _dummy_input_component_cap;
 	}
 
 	View_handle create_view(View_handle parent) override
@@ -392,7 +384,7 @@ struct Wm::Decorator_nitpicker_session : Genode::Rpc_object<Nitpicker::Session>,
 		/*
 		 * Reset view geometry when destroying a content view
 		 */
-		if (_content_registry.is_registered(view)) {
+		if (_content_registry.registered(view)) {
 			Nitpicker::Rect rect(Nitpicker::Point(0, 0), Nitpicker::Area(0, 0));
 			_nitpicker_session.enqueue<Nitpicker::Session::Command::Geometry>(view, rect);
 			_nitpicker_session.execute();
@@ -429,7 +421,7 @@ struct Wm::Decorator_nitpicker_session : Genode::Rpc_object<Nitpicker::Session>,
 				_execute_command(_command_buffer.get(i));
 			}
 			catch (...) {
-				PWRN("unhandled exception while processing command from decorator");
+				Genode::warning("unhandled exception while processing command from decorator");
 			}
 		}
 		_nitpicker_session.execute();
@@ -442,6 +434,11 @@ struct Wm::Decorator_nitpicker_session : Genode::Rpc_object<Nitpicker::Session>,
 
 	void mode_sigh(Genode::Signal_context_capability sigh) override
 	{
+		/*
+		 * Remember signal-context capability to keep NOVA from revoking
+		 * transitive delegations of the capability.
+		 */
+		_mode_sigh = sigh;
 		_nitpicker_session.mode_sigh(sigh);
 	}
 

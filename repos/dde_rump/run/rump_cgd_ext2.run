@@ -52,12 +52,10 @@ append config {
 		<service name="IRQ"/>
 		<service name="IO_MEM"/>
 		<service name="IO_PORT"/>
-		<service name="CAP"/>
 		<service name="PD"/>
 		<service name="RM"/>
 		<service name="CPU"/>
 		<service name="LOG"/>
-		<service name="SIGNAL" />
 	</parent-provides>
 	<default-route>
 		<any-service> <parent/> <any-child/> </any-service>
@@ -93,7 +91,7 @@ append config {
 		<resource name="RAM" quantum="16M"/>
 		<provides><service name="File_system"/></provides>
 		<config fs="ext2fs">
-			<policy root="/" writeable="yes"/>
+			<default-policy root="/" writeable="yes"/>
 		</config>
 		<route>
 			<service name="Block"> <child name="rump_cgd"/> </service>

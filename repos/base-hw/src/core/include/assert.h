@@ -15,7 +15,7 @@
 #define _CORE__INCLUDE__ASSERT_H_
 
 /* Genode includes */
-#include <base/printf.h>
+#include <base/log.h>
 
 /**
  * Suppress assertions in release version
@@ -43,13 +43,12 @@
 	do { \
 		if (DO_ASSERT) { \
 			if (!(expression)) { \
-				PERR("Assertion failed: "#expression""); \
-				PERR("  File: %s:%d", __FILE__, __LINE__); \
-				PERR("  Function: %s", __PRETTY_FUNCTION__); \
+				Genode::error("Assertion failed: "#expression""); \
+				Genode::error("  File: ", __FILE__, ":", __LINE__); \
+				Genode::error("  Function: ", __PRETTY_FUNCTION__); \
 				while (1) ; \
 			} \
 		} \
 	} while (0) ;
 
 #endif /* _CORE__INCLUDE__ASSERT_H_ */
-

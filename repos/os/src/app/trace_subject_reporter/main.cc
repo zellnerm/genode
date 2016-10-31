@@ -149,7 +149,7 @@ struct Server::Main
 
 	Genode::Trace::Connection trace { 512*1024, 32*1024, 0 };
 
-	Genode::Reporter reporter { "trace_subjects", 64*1024 };
+	Genode::Reporter reporter { "trace_subjects", "trace_subjects", 64*1024 };
 
 	static unsigned long default_period_ms() { return 5000; }
 
@@ -162,7 +162,7 @@ struct Server::Main
 	{
 		try {
 			return Genode::config()->xml_node().sub_node("report")
-			                                   .attribute(attr).has_value("yes");
+			                                   .attribute_value(attr, false);
 		} catch (...) { return false; }
 	}
 
@@ -204,8 +204,9 @@ void Server::Main::handle_config(unsigned)
 	report_affinity = config_report_attribute_enabled("affinity");
 	report_activity = config_report_attribute_enabled("activity");
 
-	PINF("period_ms=%ld, report_activity=%d, report_affinity=%d",
-	     period_ms, report_activity, report_affinity);
+	log("period_ms=",       period_ms,       ", "
+	    "report_activity=", report_activity, ", "
+	    "report_affinity=", report_affinity);
 
 	timer.trigger_periodic(1000*period_ms);
 }

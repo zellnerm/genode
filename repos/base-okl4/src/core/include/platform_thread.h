@@ -16,7 +16,6 @@
 
 /* Genode includes */
 #include <base/thread_state.h>
-#include <base/native_types.h>
 
 /* core includes */
 #include <pager.h>
@@ -30,15 +29,15 @@ namespace Genode {
 	{
 		private:
 
-			int              _thread_id;      /* plain thread number */
-			Native_thread_id _l4_thread_id;   /* L4 thread ID */
-			char             _name[32];       /* thread name that will be
+			int                 _thread_id;      /* plain thread number */
+			Okl4::L4_ThreadId_t _l4_thread_id;   /* L4 thread ID */
+			char                _name[32];       /* thread name that will be
 			                                     registered at the kernel
 			                                     debugger */
-			Platform_pd     *_platform_pd;    /* protection domain thread
-			                                     is bound to */
-			unsigned         _priority;       /* thread priority */
-			Pager_object    *_pager;
+			Platform_pd        *_platform_pd;    /* protection domain thread
+			                                        is bound to */
+			unsigned            _priority;       /* thread priority */
+			Pager_object       *_pager;
 
 		public:
 
@@ -49,8 +48,9 @@ namespace Genode {
 			 * Constructor
 			 */
 			Platform_thread(size_t, const char *name  = 0,
-			                unsigned priority = 0, addr_t utcb = 0,
-			                int thread_id     = THREAD_INVALID);
+			                unsigned priority = 0,
+			                Affinity::Location = Affinity::Location(),
+			                addr_t utcb = 0, int thread_id = THREAD_INVALID);
 
 			/**
 			 * Destructor
@@ -75,6 +75,11 @@ namespace Genode {
 			void pause();
 
 			/**
+			 * Enable/disable single stepping
+			 */
+			void single_step(bool) { }
+
+			/**
 			 * Resume this thread
 			 */
 			void resume();
@@ -91,7 +96,7 @@ namespace Genode {
 			 * \param l4_thread_id  final L4 thread ID
 			 * \param pd            platform pd, thread is bound to
 			 */
-			void bind(int thread_id, Native_thread_id l4_thread_id,
+			void bind(int thread_id, Okl4::L4_ThreadId_t l4_thread_id,
 			          Platform_pd *pd);
 
 			/**
@@ -162,11 +167,11 @@ namespace Genode {
 			 ** OKL4-specific Accessors **
 			 *****************************/
 
-			int              thread_id()        const { return _thread_id; }
-			Native_thread_id native_thread_id() const { return _l4_thread_id; }
-			const char      *name()             const { return _name; }
+			int                 thread_id()        const { return _thread_id; }
+			Okl4::L4_ThreadId_t native_thread_id() const { return _l4_thread_id; }
+			const char         *name()             const { return _name; }
 
-			void set_l4_thread_id(Native_thread_id id) { _l4_thread_id = id; }
+			void set_l4_thread_id(Okl4::L4_ThreadId_t id) { _l4_thread_id = id; }
 	};
 }
 

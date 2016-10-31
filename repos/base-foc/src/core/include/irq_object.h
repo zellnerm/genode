@@ -13,10 +13,10 @@
  * under the terms of the GNU General Public License version 2.
  */
 
-#pragma once 
+#ifndef _CORE__INCLUDE__IRQ_OBJECT_H_
+#define _CORE__INCLUDE__IRQ_OBJECT_H_
 
 /* Genode includes */
-#include <base/printf.h>
 #include <irq_session/irq_session.h>
 #include <cap_index.h>
 
@@ -37,7 +37,7 @@ class Genode::Irq_object
 
 		Signal_context_capability _sig_cap;
 
-		Native_thread _capability() const { return _cap->kcap(); }
+		Fiasco::l4_cap_idx_t _capability() const { return _cap->kcap(); }
 
 	public:
 
@@ -57,3 +57,5 @@ class Genode::Irq_object
 		               Irq_session::Polarity);
 		void ack_irq();
 };
+
+#endif /* _CORE__INCLUDE__IRQ_OBJECT_H_ */

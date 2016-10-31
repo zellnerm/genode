@@ -16,15 +16,35 @@
 
 #include <log_session/client.h>
 #include <base/connection.h>
+#include <base/session_label.h>
 
 namespace Genode { struct Log_connection; }
 
 
 struct Genode::Log_connection : Connection<Log_session>, Log_session_client
 {
-	Log_connection()
+	/**
+	 * Constructor
+	 */
+	Log_connection(Env &env, Session_label label = Session_label())
 	:
-		Connection<Log_session>(session("ram_quota=8K")),
+		Connection<Log_session>(env, session(env.parent(),
+		                                     "ram_quota=8K, label=\"%s\"",
+		                                     label.string())),
+		Log_session_client(cap())
+	{ }
+
+	/**
+	 * Constructor
+	 *
+	 * \noapi
+	 * \deprecated  Use the constructor with 'Env &' as first
+	 *              argument instead
+	 */
+	Log_connection(Session_label label = Session_label())
+	:
+		Connection<Log_session>(session("ram_quota=8K, label=\"%s\"",
+		                                label.string())),
 		Log_session_client(cap())
 	{ }
 };

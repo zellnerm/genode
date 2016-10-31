@@ -75,10 +75,16 @@ class I8042
 
 	enum Return
 	{
+		RET_INVALID      = 0x23, /* arbitrary value */
 		RET_TEST_OK      = 0x55,
 		RET_KBD_TEST_OK  = 0x00,
 		RET_AUX_TEST_OK  = 0x00,
 	};
+
+	/*
+	 * Maximal number of attempts to read from port
+	 */
+	enum { MAX_ATTEMPTS = 4096 };
 
 	class _Channel : public Serial_interface,
 	                 public Genode::Ring_buffer<unsigned char, 1024>
@@ -115,8 +121,21 @@ class I8042
 
 			unsigned char read()
 			{
-				while (empty())
+				unsigned attempts = MAX_ATTEMPTS;
+				while (empty() && attempts > 0) {
 					flush_read();
+					attempts--;
+				}
+
+				/*
+				 * We can savely return zero at this point because it only
+				 * matters while the driver is initializing (see various reset()
+				 * functions).
+				 */
+				if (attempts == 0) {
+					Genode::error("failed to read from port");
+					return 0;
+				}
 
 				return get();
 			}
@@ -184,7 +203,16 @@ class I8042
 		 */
 		unsigned char _wait_data()
 		{
-			while (!_output_buffer_full());
+			unsigned attempts = MAX_ATTEMPTS;
+
+			while (!_output_buffer_full() && attempts > 0)
+				attempts--;
+
+			if (attempts == 0) {
+				Genode::error("no data available");
+				return RET_INVALID;
+			}
+
 			return _data();
 		}
 
@@ -251,19 +279,19 @@ class I8042
 			/* run self tests */
 			_command(CMD_TEST);
 			if ((ret = _wait_data()) != RET_TEST_OK) {
-				Genode::printf("i8042: self test failed (%x)\n", ret);
+				Genode::log("i8042: self test failed (", Genode::Hex(ret), ")");
 				return;
 			}
 
 			_command(CMD_KBD_TEST);
 			if ((ret = _wait_data()) != RET_KBD_TEST_OK) {
-				Genode::printf("i8042: kbd test failed (%x)\n", ret);
+				Genode::log("i8042: kbd test failed (", Genode::Hex(ret), ")");
 				return;
 			}
 
 			_command(CMD_AUX_TEST);
 			if ((ret = _wait_data()) != RET_AUX_TEST_OK) {
-				Genode::printf("i8042: aux test failed (%x)\n", ret);
+				Genode::log("I8042: aux test failed (", Genode::Hex(ret), ")");
 				return;
 			}
 

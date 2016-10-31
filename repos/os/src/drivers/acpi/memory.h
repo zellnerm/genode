@@ -16,6 +16,7 @@
 
 #include <base/allocator_avl.h>
 #include <rm_session/connection.h>
+#include <region_map/client.h>
 
 namespace Acpi { class Memory; }
 
@@ -37,11 +38,12 @@ class Acpi::Memory
 				}
 		};
 
-		Genode::addr_t  const  ACPI_REGION_SIZE_LOG2;
-		Genode::Rm_connection _rm_acpi;
-		Genode::addr_t  const _acpi_base;
-		Genode::Allocator_avl _range;
-		Genode::List<Io_mem>  _io_mem_list;
+		Genode::addr_t      const ACPI_REGION_SIZE_LOG2;
+		Genode::Rm_connection     _rm;
+		Genode::Region_map_client _rm_acpi;
+		Genode::addr_t      const _acpi_base;
+		Genode::Allocator_avl     _range;
+		Genode::List<Io_mem>      _io_mem_list;
 
 	public:
 
@@ -49,7 +51,7 @@ class Acpi::Memory
 		:
 			/* 1 GB range */
 			ACPI_REGION_SIZE_LOG2(30),
-			_rm_acpi(~0UL, 1UL << ACPI_REGION_SIZE_LOG2),
+			_rm_acpi(_rm.create(1UL << ACPI_REGION_SIZE_LOG2)),
 			_acpi_base(Genode::env()->rm_session()->attach(_rm_acpi.dataspace())),
 			_range(Genode::env()->heap())
 		{
@@ -65,8 +67,9 @@ class Acpi::Memory
 
 			/* sanity check that physical address is in range we support */
 			if ((phys & _align_mask(ACPI_REGION_SIZE_LOG2)) != high) {
-				PERR("acpi table out of range - 0x%lx not in [0x%lx,0x%lx)",
-				     phys, high, high + (1UL << ACPI_REGION_SIZE_LOG2) - 1);
+				addr_t const end = high + (1UL << ACPI_REGION_SIZE_LOG2) - 1;
+				error("acpi table out of range - ", Hex(phys), " "
+				      "not in ", Hex_range<addr_t>(high, end - high));
 				throw -1;
 			}
 
@@ -76,7 +79,7 @@ class Acpi::Memory
 			for (addr_t size = 0; size < size_aligned; size += 0x1000UL) {
 				addr_t const low = (phys_aligned + size) &
 				                     _align_offset(ACPI_REGION_SIZE_LOG2);
-				if (!_range.alloc_addr(0x1000UL, low).is_ok())
+				if (!_range.alloc_addr(0x1000UL, low).ok())
 					continue;
 
 				/* allocate acpi page as io memory */

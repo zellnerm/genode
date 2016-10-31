@@ -4,10 +4,6 @@
 # \author Alexander Boettcher
 #
 
-if {[have_spec hw_panda]} {
-	puts "Platform is unsupported."
-	exit 0
-}
 
 build "core init test/mp_server"
 
@@ -39,12 +35,13 @@ if {[have_include "power_on/qemu"]} {
 	# pbxa9 - foc does only use 1 cpu even if more are configured
 	# pbxa9 - hw does not support multiple CPUs
 	if {[have_spec pbxa9]} { set want_cpus 1 }
-	# okl4, pistachio, fiasco only use one CPU even if more are configured
+	# kernels only using one CPU even if more are configured
 	if {[have_spec okl4]}           { set want_cpus 1 }
 	if {[have_spec pistachio]}      { set want_cpus 1 }
 	if {[have_spec fiasco]}         { set want_cpus 1 }
 	if {[have_spec hw_x86_64]}      { set want_cpus 1 }
 	if {[have_spec hw_zynq]}        { set want_cpus 1 }
+	if {[have_spec sel4]}           { set want_cpus 1 }
 
 	append qemu_args " -nographic -m 64 -smp $want_cpus,cores=$want_cpus "
 }
@@ -67,7 +64,7 @@ if {[have_include "power_on/qemu"]} {
 grep_output {^\[init }
 
 # remove upgrade messages from init
-unify_output {\[init \-\> test\-server\-mp\] upgrading quota donation for Env\:\:CPU \([0-9]+ bytes\)} ""
+unify_output {\[init \-\> test\-server\-mp\] upgrading quota donation for .* \([0-9]+ bytes\)} ""
 trim_lines
 
 unify_output {transfer cap [a-f0-9]+} "transfer cap UNIFIED"

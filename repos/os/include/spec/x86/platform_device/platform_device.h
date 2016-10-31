@@ -74,7 +74,7 @@ struct Platform::Device : Platform::Abstract_device
 			/**
 			 * Return base address of resource
 			 */
-			unsigned base()
+			unsigned base() const
 			{
 				/*
 				 * Mask out the resource-description bits of the base
@@ -87,12 +87,12 @@ struct Platform::Device : Platform::Abstract_device
 			/**
 			 * Return resource size in bytes
 			 */
-			unsigned size() { return _size; }
+			unsigned size() const { return _size; }
 
 			/**
 			 * Return true if resource is prefetchable memory
 			 */
-			bool prefetchable()
+			bool prefetchable() const
 			{
 				return type() == MEMORY && (_bar & (1 << 3));
 			}
@@ -100,7 +100,7 @@ struct Platform::Device : Platform::Abstract_device
 			/**
 			 * Return resource type
 			 */
-			Type type()
+			Type type() const
 			{
 				if (_bar == 0)
 					return INVALID;
@@ -246,16 +246,7 @@ struct Platform::Device : Platform::Abstract_device
 	                 Genode::uint8_t, Genode::Cache_attribute,
 	                 Genode::addr_t, Genode::size_t);
 
-	typedef Genode::Meta::Type_tuple<Rpc_bus_address,
-	        Genode::Meta::Type_tuple<Rpc_vendor_id,
-	        Genode::Meta::Type_tuple<Rpc_device_id,
-	        Genode::Meta::Type_tuple<Rpc_class_code,
-	        Genode::Meta::Type_tuple<Rpc_resource,
-	        Genode::Meta::Type_tuple<Rpc_config_read,
-	        Genode::Meta::Type_tuple<Rpc_config_write,
-	        Genode::Meta::Type_tuple<Rpc_irq,
-	        Genode::Meta::Type_tuple<Rpc_io_port,
-	        Genode::Meta::Type_tuple<Rpc_io_mem,
-	                                 Genode::Meta::Empty>
-	        > > > > > > > > > Rpc_functions;
+	GENODE_RPC_INTERFACE(Rpc_bus_address, Rpc_vendor_id, Rpc_device_id,
+	                     Rpc_class_code, Rpc_resource, Rpc_config_read,
+	                     Rpc_config_write, Rpc_irq, Rpc_io_port, Rpc_io_mem);
 };

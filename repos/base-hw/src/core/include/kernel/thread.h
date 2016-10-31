@@ -11,8 +11,8 @@
  * under the terms of the GNU General Public License version 2.
  */
 
-#ifndef _KERNEL__THREAD_H_
-#define _KERNEL__THREAD_H_
+#ifndef _CORE__INCLUDE__KERNEL__THREAD_H_
+#define _CORE__INCLUDE__KERNEL__THREAD_H_
 
 /* core includes */
 #include <kernel/signal_receiver.h>
@@ -77,16 +77,14 @@ class Kernel::Thread_event : public Signal_ack_handler
  */
 class Kernel::Thread
 :
-	public Kernel::Object, public Cpu::User_context, public Cpu_domain_update,
+	public Kernel::Object, public Cpu_job, public Cpu_domain_update,
 	public Ipc_node, public Signal_context_killer, public Signal_handler,
-	public Cpu_job
+	private Timeout
 {
 	friend class Thread_event;
 	friend class Core_thread;
 
 	private:
-
-		enum { START_VERBOSE = 0 };
 
 		enum State
 		{
@@ -107,6 +105,7 @@ class Kernel::Thread
 		State              _state;
 		Signal_receiver *  _signal_receiver;
 		char const * const _label;
+		capid_t            _timeout_sigid = 0;
 
 		void _init();
 
@@ -190,26 +189,9 @@ class Kernel::Thread
 		void _call();
 
 		/**
-		 * Return amount of timer tics that 'quota' is worth 
+		 * Return amount of timer tics that 'quota' is worth
 		 */
 		size_t _core_to_kernel_quota(size_t const quota) const;
-
-		/**
-		 * Print the activity of the thread
-		 *
-		 * \param printing_thread  wether this thread caused the debugging
-		 */
-		void _print_activity(bool const printing_thread);
-
-		/**
-		 * Print the activity of the thread when it awaits a message
-		 */
-		void _print_activity_when_awaits_ipc();
-
-		/**
-		 * Print activity info that is printed regardless of the thread state
-		 */
-		void _print_common_activity();
 
 
 		/*********************************************************
@@ -244,7 +226,11 @@ class Kernel::Thread
 		void _call_ack_irq();
 		void _call_new_obj();
 		void _call_delete_obj();
+		void _call_ack_cap();
 		void _call_delete_cap();
+		void _call_timeout();
+		void _call_timeout_age_us();
+		void _call_timeout_max_us();
 
 		template <typename T, typename... ARGS>
 		void _call_new(ARGS &&... args)
@@ -335,6 +321,8 @@ class Kernel::Thread
 		static void syscall_destroy(Thread * thread) {
 			call(call_id_delete_thread(), (Call_arg)thread); }
 
+		void print(Genode::Output &out) const;
+
 
 		/*************
 		 ** Cpu_job **
@@ -343,6 +331,13 @@ class Kernel::Thread
 		void exception(unsigned const cpu);
 		void proceed(unsigned const cpu);
 		Cpu_job * helping_sink();
+
+
+		/*************
+		 ** Timeout **
+		 *************/
+
+		void timeout_triggered();
 
 
 		/***************
@@ -371,4 +366,4 @@ class Kernel::Core_thread : public Core_object<Kernel::Thread>
 		static Thread & singleton();
 };
 
-#endif /* _KERNEL__THREAD_H_ */
+#endif /* _CORE__INCLUDE__KERNEL__THREAD_H_ */

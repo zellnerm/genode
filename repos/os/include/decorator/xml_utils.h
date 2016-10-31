@@ -71,7 +71,7 @@ Decorator::string_attribute(Xml_node const &node, char const *attr,
 
 	char buf[CAPACITY];
 	node.attribute(attr).value(buf, sizeof(buf));
-	return Genode::String<CAPACITY>(buf);
+	return Genode::String<CAPACITY>(Genode::Cstring(buf));
 }
 
 
@@ -119,7 +119,7 @@ Decorator::for_each_sub_node(Genode::Xml_node node, char const *type,
 		if (node.has_type(type))
 			func(node);
 
-		if (node.is_last()) break;
+		if (node.last()) break;
 	}
 }
 

@@ -2,6 +2,7 @@
  * \brief  SDHCI controller driver
  * \author Norman Feske
  * \author Christian Helmuth
+ * \author Timo Wischer
  * \date   2014-09-21
  */
 
@@ -91,6 +92,18 @@ struct Sdhci : Genode::Mmio
 		struct Bre     : Bitfield<11, 1> { };
 	};
 
+	struct Host_ctrl : Register<0x28, 32>
+	{
+		struct Voltage : Bitfield<9,  3> {
+			enum {
+				V18 = 0b101,
+				V30 = 0b110,
+				V33 = 0b111,
+			};
+		};
+		struct Power   : Bitfield<8,  1> { };
+	};
+
 	struct Arg1 : Register<0x8, 32> { };
 
 	struct Cmdtm : Register<0xc, 32>
@@ -125,12 +138,22 @@ struct Sdhci : Genode::Mmio
 	struct Irpt_mask : Register<0x34, 32> { };
 	struct Irpt_en   : Register<0x38, 32> { };
 
+	struct Capabilities : Register<0x40, 32> { };
+
+	struct Host_version : Register<0xFE, 16>
+	{
+		struct Spec     : Bitfield<0, 8> { };
+		struct Vendor   : Bitfield<8, 8> { };
+	};
+
 	Sdhci(Genode::addr_t const mmio_base) : Genode::Mmio(mmio_base) { }
 };
 
 
 struct Sdhci_controller : private Sdhci, public Sd_card::Host_controller
 {
+	enum { Block_size = 0x200 };
+
 	private:
 
 		Delayer           &_delayer;
@@ -148,7 +171,7 @@ struct Sdhci_controller : private Sdhci, public Sd_card::Host_controller
 			write<Control1>(v);
 
 			if (!wait_for<Control1::Clk_internal_stable>(1, _delayer)) {
-				PERR("could not set internal clock");
+				Genode::error("could not set internal clock");
 				throw Detection_failed();
 			}
 
@@ -160,7 +183,7 @@ struct Sdhci_controller : private Sdhci, public Sd_card::Host_controller
 			write<Control1::Data_tounit>(0xe);
 		}
 
-		Sd_card::Card_info _init()
+		Sd_card::Card_info _init(const bool set_voltage)
 		{
 			using namespace Sd_card;
 
@@ -173,8 +196,24 @@ struct Sdhci_controller : private Sdhci, public Sd_card::Host_controller
 			}
 
 			if (!wait_for<Control1::Srst_hc>(0, _delayer)) {
-				PERR("host-controller soft reset timed out");
+				Genode::error("host-controller soft reset timed out");
 				throw Detection_failed();
+			}
+
+			Genode::log("SDHCI version: ", read<Host_version::Vendor>(), " "
+			            "(specification ", read<Host_version::Spec>() + 1, ".0)");
+
+			/*
+			 * Raspberry Pi (BCM2835) does not need to
+			 * set the sd card voltage and
+			 * power up the host controller.
+			 * This registers are reserved and
+			 * always have to be written to 0.
+			 */
+			if (set_voltage) {
+				/* Enable sd card power */
+				write<Host_ctrl>(Host_ctrl::Power::bits(1)
+				               | Host_ctrl::Voltage::bits(Host_ctrl::Voltage::V33));
 			}
 
 			/* enable interrupt status reporting */
@@ -189,19 +228,19 @@ struct Sdhci_controller : private Sdhci, public Sd_card::Host_controller
 			_set_and_enable_clock(240);
 
 			if (!issue_command(Go_idle_state())) {
-				PWRN("Go_idle_state command failed");
+				Genode::warning("Go_idle_state command failed");
 				throw Detection_failed();
 			}
 
 			_delayer.usleep(2000);
 
 			if (!issue_command(Send_if_cond())) {
-				PWRN("Send_if_cond command failed");
+				Genode::warning("Send_if_cond command failed");
 				throw Detection_failed();
 			}
 
 			if (read<Resp0>() != 0x1aa) {
-				PERR("unexpected response of Send_if_cond command");
+				Genode::error("unexpected response of Send_if_cond command");
 				throw Detection_failed();
 			}
 
@@ -216,7 +255,7 @@ struct Sdhci_controller : private Sdhci, public Sd_card::Host_controller
 			int i = 1000;
 			for (; i > 0; --i) {
 				if (!issue_command(Sd_send_op_cond(0x18000, true))) {
-					PWRN("Sd_send_op_cond command failed");
+					Genode::warning("Sd_send_op_cond command failed");
 					throw Detection_failed();
 				}
 
@@ -227,7 +266,7 @@ struct Sdhci_controller : private Sdhci, public Sd_card::Host_controller
 			}
 
 			if (i == 0) {
-				PERR("Sd_send_op_cond timed out, could no power-on SD card");
+				Genode::error("Sd_send_op_cond timed out, could no power-on SD card");
 				throw Detection_failed();
 			}
 
@@ -238,7 +277,7 @@ struct Sdhci_controller : private Sdhci, public Sd_card::Host_controller
 			 */
 			if (!issue_command(Set_bus_width(Set_bus_width::Arg::Bus_width::FOUR_BITS),
 			                   card_info.rca())) {
-				PWRN("Set_bus_width(FOUR_BITS) command failed");
+				Genode::warning("Set_bus_width(FOUR_BITS) command failed");
 				throw Detection_failed();
 			}
 
@@ -277,7 +316,7 @@ struct Sdhci_controller : private Sdhci, public Sd_card::Host_controller
 			 */
 			Blksizecnt::access_t v = read<Blksizecnt>();
 			Blksizecnt::Blkcnt::set(v, block_count);
-			Blksizecnt::Blksize::set(v, 0x200);
+			Blksizecnt::Blksize::set(v, Block_size);
 			write<Blksizecnt>(v);
 		}
 
@@ -300,9 +339,9 @@ struct Sdhci_controller : private Sdhci, public Sd_card::Host_controller
 		 * \param mmio_base  local base address of MMIO registers
 		 */
 		Sdhci_controller(Genode::addr_t const mmio_base, Delayer &delayer,
-		                 unsigned irq, bool use_dma)
+						 unsigned irq, bool use_dma, const bool set_voltage = false)
 		:
-			Sdhci(mmio_base), _delayer(delayer), _card_info(_init()), _irq(irq)
+			Sdhci(mmio_base), _delayer(delayer), _card_info(_init(set_voltage)), _irq(irq)
 		{ }
 
 
@@ -313,11 +352,10 @@ struct Sdhci_controller : private Sdhci, public Sd_card::Host_controller
 		bool _issue_command(Sd_card::Command_base const &command)
 		{
 			if (verbose)
-				PLOG("-> index=0x%08x, arg=0x%08x, rsp_type=%d",
-				     command.index, command.arg, command.rsp_type);
+				Genode::log("-> ", command);
 
 			if (!_poll_and_wait_for<Status::Inhibit>(0)) {
-				PERR("controller inhibits issueing commands");
+				Genode::error("controller inhibits issueing commands");
 				return false;
 			}
 
@@ -357,7 +395,7 @@ struct Sdhci_controller : private Sdhci, public Sd_card::Host_controller
 			write<Cmdtm>(cmd);
 
 			if (!_poll_and_wait_for<Interrupt::Cmd_done>(1)) {
-				PERR("command timed out");
+				Genode::error("command timed out");
 				return false;
 			}
 
@@ -397,6 +435,16 @@ struct Sdhci_controller : private Sdhci, public Sd_card::Host_controller
 			return Sd_card::Send_relative_addr::Response::Rca::get(read<Resp0>());
 		}
 
+		size_t _block_to_command_address(const size_t block_number)
+		{
+			/* use byte position for addressing with standard cards */
+			if (_card_info.version() == Sd_card::Csd3::Version::STANDARD_CAPACITY) {
+				return block_number * Block_size;
+			}
+
+			return block_number;
+		}
+
 		/**
 		 * Read data blocks from SD card
 		 *
@@ -408,8 +456,9 @@ struct Sdhci_controller : private Sdhci, public Sd_card::Host_controller
 
 			_set_block_count(block_count);
 
-			if (!issue_command(Read_multiple_block(block_number))) {
-				PERR("Read_multiple_block failed, Status: 0x%08x", read<Status>());
+			if (!issue_command(Read_multiple_block(_block_to_command_address(block_number)))) {
+				Genode::error("Read_multiple_block failed, Status: ",
+				              Genode::Hex(read<Status>()));
 				return false;
 			}
 
@@ -432,8 +481,8 @@ struct Sdhci_controller : private Sdhci, public Sd_card::Host_controller
 			}
 
 			if (!_poll_and_wait_for<Interrupt::Data_done>(1)) {
-				PERR("completion of read request failed (interrupt status %08x)",
-				     read<Interrupt>());
+				Genode::error("completion of read request failed (interrupt "
+				              "status ", Genode::Hex(read<Interrupt>()), ")");
 				return false;
 			}
 
@@ -454,8 +503,9 @@ struct Sdhci_controller : private Sdhci, public Sd_card::Host_controller
 
 			_set_block_count(block_count);
 
-			if (!issue_command(Write_multiple_block(block_number))) {
-				PERR("Write_multiple_block failed, Status: 0x%08x", read<Status>());
+			if (!issue_command(Write_multiple_block(_block_to_command_address(block_number)))) {
+				Genode::error("Write_multiple_block failed, Status: ",
+				              Genode::Hex(read<Status>()));
 				return false;
 			}
 
@@ -472,8 +522,8 @@ struct Sdhci_controller : private Sdhci, public Sd_card::Host_controller
 			}
 
 			if (!_poll_and_wait_for<Interrupt::Data_done>(1)) {
-				PERR("completion of write request failed (interrupt status %08x)",
-				     read<Interrupt>());
+				Genode::error("completion of write request failed (interrupt "
+				              "status ", read<Interrupt>(), ")");
 				return false;
 			}
 

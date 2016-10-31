@@ -21,7 +21,7 @@
 
 /* Genode includes */
 #include <base/allocator_avl.h>
-#include <base/printf.h>
+#include <base/log.h>
 #include <base/sleep.h>
 #include <base/thread.h>
 #include <block_session/connection.h>
@@ -66,7 +66,7 @@ Vancouver_disk::Vancouver_disk(Synced_motherboard &mb,
                                char         * backing_store_base,
                                Genode::size_t backing_store_size)
 :
-	Thread("vmm_disk"),
+	Thread_deprecated("vmm_disk"),
 	_motherboard(mb),
 	_backing_store_base(backing_store_base),
 	_backing_store_size(backing_store_size),
@@ -120,7 +120,7 @@ void Vancouver_disk::_signal_dispatch_entry(unsigned disknr)
 				obj = obj->find(reinterpret_cast<Genode::addr_t>(source_addr));
 
 			if (!obj) {
-				PWRN("Unknown MessageDisk object - drop ack of block session");
+				Genode::warning("unknown MessageDisk object - drop ack of block session");
 				continue;
 			}
 
@@ -137,7 +137,7 @@ void Vancouver_disk::_signal_dispatch_entry(unsigned disknr)
 		    !(packet.operation() == Block::Packet_descriptor::Opcode::READ ||
 		      packet.operation() == Block::Packet_descriptor::Opcode::WRITE)) {
 
-			PDBG("Getting block failed !");
+			Genode::warning("getting block failed");
 
 			MessageDiskCommit mdc(disknr, msg->usertag,
 			                      MessageDisk::DISK_STATUS_DEVICE);
@@ -157,7 +157,7 @@ void Vancouver_disk::_signal_dispatch_entry(unsigned disknr)
 					// check for bounds
 					if (dma_addr >= _backing_store_base + _backing_store_size
 					 || dma_addr < _backing_store_base) {
-						PERR("dma bounds violation");
+						Genode::error("dma bounds violation");
 					} else
 						memcpy(dma_addr, source_addr + sector,
 						       msg->dma[i].bytecount);
@@ -181,7 +181,7 @@ void Vancouver_disk::_signal_dispatch_entry(unsigned disknr)
 
 bool Vancouver_disk::receive(MessageDisk &msg)
 {
-	static Genode::Native_utcb utcb_backup;
+	static Vmm::Utcb_guard::Utcb_backup utcb_backup;
 	Vmm::Utcb_guard guard(utcb_backup);
 
 	if (msg.disknr >= MAX_DISKS)
@@ -217,7 +217,7 @@ bool Vancouver_disk::receive(MessageDisk &msg)
 		                                   &_diskcon[msg.disknr].blk_size,
 		                                   &_diskcon[msg.disknr].ops);
 
-		Logging::printf("Got info: %llu blocks (%zu B), ops (R: %x, W:%x)\n ",
+		Logging::printf("Got info: %llu blocks (%lu B), ops (R: %x, W:%x)\n ",
 		        _diskcon[msg.disknr].blk_cnt,
 		        _diskcon[msg.disknr].blk_size,
 		        _diskcon[msg.disknr].ops.supported(Block::Packet_descriptor::READ),

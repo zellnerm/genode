@@ -29,25 +29,13 @@ static inline char const *basename(char const *path)
 
 
 /**
- * Return true if specified path is a base name (contains no path delimiters)
- */
-static inline bool is_basename(char const *path)
-{
-	for (; *path; path++)
-		if (*path == '/')
-			return false;
-
-	return true;
-}
-
-
-/**
  * Return true if null-terminated string 'substr' occurs in null-terminated
  * string 'str'
  */
 static bool string_contains(char const *str, char const *substr)
 {
 	using namespace Genode;
+	using Genode::size_t;
 
 	size_t str_len = strlen(str);
 	size_t substr_len = strlen(substr);

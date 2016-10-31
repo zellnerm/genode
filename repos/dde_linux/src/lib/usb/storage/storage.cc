@@ -11,18 +11,24 @@
  * under the terms of the GNU General Public License version 2.
  */
 
+#include <base/log.h>
 #include <base/rpc_server.h>
 #include <block/component.h>
 #include <cap_session/connection.h>
 #include <util/endian.h>
 #include <util/list.h>
 
-#include <extern_c_begin.h>
 #include <lx_emul.h>
-#include <storage/scsi.h>
-#include <extern_c_end.h>
 
-#include <platform/lx_mem.h>
+#include <lx_kit/malloc.h>
+#include <lx_kit/backend_alloc.h>
+#include <lx_kit/scheduler.h>
+
+#include <lx_emul/extern_c_begin.h>
+#include <storage/scsi.h>
+#include <drivers/usb/storage/usb.h>
+#include <lx_emul/extern_c_end.h>
+
 #include "signal.h"
 
 static Signal_helper *_signal = 0;
@@ -71,7 +77,7 @@ class Storage_device : public Genode::List<Storage_device>::Element,
 				_block_count++;
 
 			if (verbose)
-				PDBG("block size: %zu block count: %llu", _block_size, _block_count);
+				Genode::log("block size: ", _block_size, " block count", _block_count);
 
 			scsi_free_buffer(cmnd);
 			_scsi_free_command(cmnd);
@@ -85,8 +91,13 @@ class Storage_device : public Genode::List<Storage_device>::Element,
 				throw Io_error();
 
 			if (verbose)
-				PDBG("PACKET: phys: %lx block: %llu count: %zu %s",
-				     phys, block_nr, block_count, read ? "read" : "write");
+				log("PACKET: phys: ", Genode::Hex(phys), " block: ", block_nr, "count: ", block_count,
+				    read ? " read" : " write");
+
+			/* check if we can call queuecommand */
+			struct us_data *us = (struct us_data *) _sdev->host->hostdata;
+			if (us->srb != NULL)
+				throw Request_congestion();
 
 			struct scsi_cmnd *cmnd = _scsi_alloc_command();
 
@@ -96,7 +107,7 @@ class Storage_device : public Genode::List<Storage_device>::Element,
 			cmnd->sc_data_direction = read ? DMA_FROM_DEVICE : DMA_TO_DEVICE;
 			cmnd->scsi_done         = _async_done;
 
-			Block::Packet_descriptor *p = new (Genode::env()->heap()) Block::Packet_descriptor();
+			Block::Packet_descriptor *p = new (Lx::Malloc::mem()) Block::Packet_descriptor();
 			*p = packet;
 			cmnd->packet  = (void *)p;
 
@@ -118,10 +129,11 @@ class Storage_device : public Genode::List<Storage_device>::Element,
 			cmnd->request = &req;
 
 			/* send command to host driver */
-			while((_sdev->host->hostt->queuecommand(_sdev->host, cmnd)) != 0) {
-				Server::wait_and_dispatch_one_signal();
-				__wait_event();
-			}
+			_sdev->host->hostt->queuecommand(_sdev->host, cmnd);
+
+			/* schedule next task if we come from EP */
+			if (Lx::scheduler().active() == false)
+				Lx::scheduler().schedule();
 		}
 
 	public:
@@ -159,15 +171,15 @@ class Storage_device : public Genode::List<Storage_device>::Element,
 		bool dma_enabled() { return true; }
 
 		Genode::Ram_dataspace_capability alloc_dma_buffer(Genode::size_t size) {
-			return Backend_memory::alloc(size, Genode::UNCACHED); }
+			return Lx::backend_alloc(size, Genode::UNCACHED); }
 
 		void free_dma_buffer(Genode::Ram_dataspace_capability cap) {
-			return Backend_memory::free(cap); }
+			return Lx::backend_free(cap); }
 };
 
 
-void Storage::init(Server::Entrypoint &ep) {
-	_signal = new (Genode::env()->heap()) Signal_helper(ep); }
+void Storage::init(Genode::Env &env) {
+	_signal = new (Lx::Malloc::mem()) Signal_helper(env); }
 
 
 struct Factory : Block::Driver_factory
@@ -182,6 +194,20 @@ struct Factory : Block::Driver_factory
 
 
 static Storage_device *device = nullptr;
+static work_struct delayed;
+
+
+extern "C" void ack_packet(work_struct *work)
+{
+	Block::Packet_descriptor *packet =
+		(Block::Packet_descriptor *)(work->data);
+
+	if (verbose)
+		Genode::log("ACK packet for block: ", packet->block_number());
+
+	device->ack_packet(*packet);
+	Genode::destroy(Lx::Malloc::mem(), packet);
+}
 
 
 void scsi_add_device(struct scsi_device *sdev)
@@ -196,8 +222,9 @@ void scsi_add_device(struct scsi_device *sdev)
 	 * XXX  move to 'main'
 	 */
 	if (!announce) {
-		static Block::Root root(_signal->ep(), env()->heap(), factory);
-		env()->parent()->announce(_signal->ep().rpc_ep().manage(&root));
+		PREPARE_WORK(&delayed, ack_packet);
+		static Block::Root root(_signal->ep(), Lx::Malloc::mem(), factory);
+		_signal->parent().announce(_signal->ep().rpc_ep().manage(&root));
 		announce = true;
 	}
 }
@@ -205,15 +232,15 @@ void scsi_add_device(struct scsi_device *sdev)
 
 void Storage_device::_async_done(struct scsi_cmnd *cmnd)
 {
-	Block::Packet_descriptor *packet =
-		static_cast<Block::Packet_descriptor *>(cmnd->packet);
+	/*
+	 * Schedule packet ack, because we are called here in USB storage thread
+	 * context, the from code that will clear the command queue later, so we
+	 * cannot send the next packet from here
+	 */
+	delayed.data = cmnd->packet;
+	schedule_work(&delayed);
 
-	if (verbose)
-		PDBG("ACK packet for block: %llu status: %d",
-		     packet->block_number(), cmnd->result);
-
-	device->ack_packet(*packet);
-	Genode::destroy(Genode::env()->heap(), packet);
 	scsi_free_buffer(cmnd);
 	_scsi_free_command(cmnd);
+
 }

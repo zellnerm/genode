@@ -14,46 +14,11 @@
 #ifndef _SIGNAL_H_
 #define _SIGNAL_H_
 
-#include <base/env.h>
-#include <base/printf.h>
+#include <platform.h>
+
 #include <base/signal.h>
-#include <os/server.h>
 
-#include "routine.h"
-
-/**
- * This singleton currently received all signals
- */
-class Service_handler
-{
-	private:
-
-		Service_handler() { }
-
-	public:
-
-		static Service_handler * s()
-		{
-			static Service_handler _s;
-			return &_s;
-		}
-
-		/**
-		 * Dispatch for wait for signal
-		 */
-		void process()
-		{
-			Timer::update_jiffies();
-
-			if (Routine::all()) {
-				Routine::schedule();
-				return;
-			}
-
-			Routine::schedule_main();
-		}
-};
-
+static bool const verbose = false;
 
 /**
  * Helper that holds sender and entrypoint
@@ -62,47 +27,34 @@ class Signal_helper
 {
 	private:
 
-		Server::Entrypoint        &_ep;
-		Genode::Signal_transmitter _sender;
+		Genode::Env                &_env;
+		Genode::Signal_transmitter  _sender;
 
 	public:
 
-		Signal_helper(Server::Entrypoint &ep) : _ep(ep) { }
+		Signal_helper(Genode::Env &env) : _env(env) { }
 
-		Server::Entrypoint         &ep()     { return _ep;      }
-		Genode::Signal_transmitter &sender() { return _sender; }
+		Genode::Entrypoint         &ep()     { return _env.ep(); }
+		Genode::Signal_transmitter &sender() { return _sender;   }
+		Genode::Parent             &parent() { return _env.parent(); } 
+		Genode::Env                &env()    { return _env; }
 };
 
 
-namespace Timer
-{
-	void init(Server::Entrypoint &ep);
-}
-
-namespace Irq
-{
-	void init(Server::Entrypoint &ep);
-	void check_irq();
-}
-
-namespace Event
-{
-	void init(Server::Entrypoint &ep);
-}
-
 namespace Storage
 {
-	void init(Server::Entrypoint &ep);
+	void init(Genode::Env &env);
 }
 
 namespace Nic
 {
-	void init(Server::Entrypoint &ep);
+	void init(Genode::Env &env);
 }
 
 namespace Raw
 {
-	void init(Server::Entrypoint &ep, bool report_device_list);
+	void init(Genode::Env &env, bool report_device_list);
 }
+
 
 #endif /* _SIGNAL_H_ */

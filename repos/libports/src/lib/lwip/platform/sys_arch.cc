@@ -12,15 +12,15 @@
  */
 
 /* Genode includes */
-#include <base/printf.h>
+#include <base/log.h>
 #include <base/env.h>
 #include <base/lock.h>
+#include <base/sleep.h>
 #include <parent/parent.h>
 #include <os/timed_semaphore.h>
 
 /* LwIP includes */
 #include <lwip/genode.h>
-#include <timer.h>
 #include <ring_buffer.h>
 #include <thread.h>
 #include <verbose.h>
@@ -31,11 +31,11 @@ namespace Lwip {
 	class Mutex
 	{
 		public:
-			Genode::Lock          lock;
-			int                   counter;
-			Genode::Thread_base  *thread;
+			Genode::Lock     lock;
+			int              counter;
+			Genode::Thread  *thread;
 
-			Mutex() : counter(0), thread((Genode::Thread_base*)-1) {}
+			Mutex() : counter(0), thread((Genode::Thread*)-1) {}
 	};
 
 
@@ -109,11 +109,11 @@ extern "C" {
 		static ip_addr_t ip_addr = { 0 };
 
 		if (ip_addr.addr != netif->ip_addr.addr) {
-			PINF("got IP address %d.%d.%d.%d",
-			     ip4_addr1(&(netif->ip_addr)),
-			     ip4_addr2(&(netif->ip_addr)),
-			     ip4_addr3(&(netif->ip_addr)),
-			     ip4_addr4(&(netif->ip_addr)));
+			Genode::log("got IP address ",
+			            ip4_addr1(&(netif->ip_addr)), ".",
+			            ip4_addr2(&(netif->ip_addr)), ".",
+			            ip4_addr3(&(netif->ip_addr)), ".",
+			            ip4_addr4(&(netif->ip_addr)));
 			ip_addr.addr = netif->ip_addr.addr;
 		}
 	}
@@ -203,7 +203,7 @@ extern "C" {
 				netifapi_netif_set_up(&netif);
 			}
 		} catch (Nic_not_availble) {
-			PWRN("NIC not available, loopback is used as default");
+			Genode::warning("NIC not available, loopback is used as default");
 			return 2;
 		}
 		return 0;
@@ -237,10 +237,10 @@ extern "C" {
 			sem->ptr = _sem;
 			return ERR_OK;
 		} catch (Genode::Allocator::Out_of_memory) {
-			PWRN("Out of memory");
+			Genode::warning(__func__, ": out of memory");
 			return ERR_MEM;
 		} catch (...) {
-			PERR("Unknown Exception occured!");
+			Genode::error(__func__, ": unknown exception occured!");
 			/* we just use a arbitrary value that is
 			 * not defined in err.h */
 			return -32;
@@ -261,7 +261,7 @@ extern "C" {
 			if (_sem)
 				destroy(Genode::env()->heap(), _sem);
 		} catch (...) {
-			PERR("Unknown Exception occured!");
+			Genode::error(__func__, ": unknown exception occured!");
 		}
 	}
 
@@ -276,12 +276,11 @@ extern "C" {
 			Genode::Timed_semaphore *_sem =
 				reinterpret_cast<Genode::Timed_semaphore*>(sem->ptr);
 			if (!_sem) {
-				//PERR("Invalid semaphore pointer at: %lx", *sem->ptr);
 				return;
 			}
 			_sem->up();
 		} catch (...) {
-			PERR("Unknown Exception occured!");
+			Genode::error(__func__, ": unknown exception occured!");
 		}
 	}
 
@@ -333,7 +332,6 @@ extern "C" {
 		try {
 			Timed_semaphore *_sem = reinterpret_cast<Timed_semaphore*>(sem->ptr);
 			if (!_sem) {
-				//PERR("Invalid semaphore pointer at: %lx", *sem->ptr);
 				return EINVAL;
 			}
 
@@ -348,7 +346,7 @@ extern "C" {
 		} catch (Timeout_exception) {
 			return SYS_ARCH_TIMEOUT;
 		} catch (...) {
-			PERR("Unknown Exception occured!");
+			Genode::error(__func__, ": unknown exception occured!");
 			return -1;
 		}
 	}
@@ -359,10 +357,10 @@ extern "C" {
 	 */
 	sys_prot_t sys_arch_protect(void)
 	{
-		if (global_mutex()->thread == Genode::Thread_base::myself())
+		if (global_mutex()->thread == Genode::Thread::myself())
 			return ++global_mutex()->counter;
 		global_mutex()->lock.lock();
-		global_mutex()->thread = Genode::Thread_base::myself();
+		global_mutex()->thread = Genode::Thread::myself();
 		return 0;
 	}
 
@@ -372,13 +370,13 @@ extern "C" {
 	 */
 	void sys_arch_unprotect(sys_prot_t pval)
 	{
-		if (global_mutex()->thread != Genode::Thread_base::myself())
+		if (global_mutex()->thread != Genode::Thread::myself())
 			return;
 		if (global_mutex()->counter > 1)
 			global_mutex()->counter--;
 		else {
 			global_mutex()->counter = 0;
-			global_mutex()->thread = (Genode::Thread_base*)-1;
+			global_mutex()->thread = (Genode::Thread*)-1;
 			global_mutex()->lock.unlock();
 		}
 	}
@@ -401,10 +399,10 @@ extern "C" {
 			mbox->ptr = _mbox;
 			return ERR_OK;
 		} catch (Genode::Allocator::Out_of_memory) {
-			PWRN("Out of memory");
+			Genode::warning(__func__, ": out of memory");
 			return ERR_MEM;
 		} catch (...) {
-			PERR("Unknown Exception occured!");
+			Genode::error(__func__, ": unknown exception occured!");
 			return -32;
 		}
 	}
@@ -422,7 +420,7 @@ extern "C" {
 			if (_mbox)
 				destroy(Genode::env()->heap(), _mbox);
 		} catch (...) {
-			PERR("Unknown Exception occured!");
+			Genode::error(__func__, ": unknown exception occured!");
 		}
 	}
 
@@ -473,16 +471,15 @@ extern "C" {
 			try {
 				Mailbox* _mbox = reinterpret_cast<Mailbox*>(mbox->ptr);
 				if (!_mbox) {
-					//PERR("Invalid mailbox pointer at %lx", *mbox->ptr);
 					return;
 				}
 				_mbox->add(msg);
 				return;
 			} catch (Mailbox::Overflow) {
 				if (verbose)
-					PWRN("Overflow exception!");
+					Genode::warning(__func__, ": overflow exception!");
 			} catch (...) {
-				PERR("Unknown Exception occured!");
+				Genode::error(__func__, ": unknown exception occured!");
 			}
 		}
 	}
@@ -499,16 +496,15 @@ extern "C" {
 		try {
 			Mailbox* _mbox = reinterpret_cast<Mailbox*>(mbox->ptr);
 			if (!_mbox) {
-				//PERR("Invalid mailbox pointer at %lx", *mbox->ptr);
 				return EINVAL;
 			}
 			_mbox->add(msg);
 			return ERR_OK;
 		} catch (Mailbox::Overflow) {
 			if (verbose)
-				PWRN("Overflow exception!");
+				Genode::warning(__func__, ": overflow exception!");
 		} catch (...) {
-			PERR("Unknown Exception occured!");
+			Genode::error(__func__, ": unknown exception occured!");
 		}
 		return ERR_MEM;
 	}
@@ -542,7 +538,7 @@ extern "C" {
 		} catch (Genode::Nonblocking_exception) {
 			ret = SYS_MBOX_EMPTY;
 		} catch (...) {
-			PERR("Unknown Exception occured!");
+			Genode::error(__func__, ": unknown exception occured!");
 			ret = SYS_ARCH_TIMEOUT;
 		}
 
@@ -591,10 +587,10 @@ extern "C" {
 			_th->start();
 			return (sys_thread_t) _th;
 		} catch (Genode::Allocator::Out_of_memory) {
-			PWRN("Out of memory");
+			Genode::warning(__func__, ": out of memory");
 			return 0;
 		} catch (...) {
-			PERR("Unknown Exception occured!");
+			Genode::error(__func__, ": unknown Exception occured!");
 			return ERR_MEM;
 		}
 	}
@@ -618,10 +614,10 @@ extern "C" {
 		struct Thread_timeout
 		{
 			sys_timeouts    timeouts;
-			Thread_base    *thread;
+			Thread         *thread;
 			Thread_timeout *next;
 
-			Thread_timeout(Thread_base *t = 0)
+			Thread_timeout(Thread *t = 0)
 			: thread(t), next(0) { timeouts.next = 0; }
 		};
 		static Lock mutex;
@@ -630,7 +626,7 @@ extern "C" {
 		Lock::Guard lock_guard(mutex);
 
 		try {
-			Thread_base *thread = Thread_base::myself();
+			Thread *thread = Thread::myself();
 
 			/* check available timeout heads */
 			for (Thread_timeout *tt = &thread_timeouts; tt; tt = tt->next)
@@ -644,7 +640,7 @@ extern "C" {
 
 			return &tt->timeouts;
 		} catch (...) {
-			PERR("Unknown Exception occured!");
+			Genode::error(__func__, ": unknown exception occured!");
 			return 0;
 		}
 	}
@@ -659,6 +655,6 @@ extern "C" {
 extern "C" void lwip_sleep_forever()
 {
 	int dummy = 1;
-	PDBG("thread %u", (unsigned)(((Genode::addr_t)&dummy)>>20)&0xff);
+	Genode::log(__func__, ": thread ", (unsigned)(((Genode::addr_t)&dummy)>>20)&0xff);
 	Genode::sleep_forever();
 }

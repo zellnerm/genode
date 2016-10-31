@@ -5,24 +5,25 @@
  */
 
 /*
- * Copyright (C) 2014 Genode Labs GmbH
+ * Copyright (C) 2014-2016 Genode Labs GmbH
  *
  * This file is part of the Genode OS framework, which is distributed
  * under the terms of the GNU General Public License version 2.
  */
 
 /* Genode includes */
-#include <base/printf.h>
+#include <base/env.h>
+#include <base/log.h>
 
 /* local includes */
 #include <lx.h>
+#include <lx_emul.h>
 
-#include <extern_c_begin.h>
-# include <lx_emul.h>
+#include <lx_emul/extern_c_begin.h>
 # include <linux/socket.h>
 # include <linux/net.h>
 # include <net/sock.h>
-#include <extern_c_end.h>
+#include <lx_emul/extern_c_end.h>
 
 #include <wifi/socket_call.h>
 
@@ -134,7 +135,7 @@ class Lx::Socket
 		{
 			struct socket *sock = static_cast<struct socket*>(_call.handle->socket);
 			if (!sock)
-				PERR("BUG: sock is zero");
+				Genode::error("BUG: sock is zero");
 
 			return sock;
 		}
@@ -142,7 +143,7 @@ class Lx::Socket
 		void _do_socket()
 		{
 			struct socket *s;
-			int res = sock_create_kern(_call.socket.domain, _call.socket.type,
+			int res = sock_create_kern(nullptr, _call.socket.domain, _call.socket.type,
 			                           _call.socket.protocol, &s);
 			if (!res) {
 				_call.socket.result = s;
@@ -150,7 +151,7 @@ class Lx::Socket
 				return;
 			}
 
-			PERR("sock_create_kern failed, res: %d", res);
+			Genode::error("sock_create_kern failed, res: ", res);
 			_call.socket.result = nullptr;
 			_call.err           = res;
 		}
@@ -186,22 +187,14 @@ class Lx::Socket
 			struct socket *sock = _call_socket();
 			struct msghdr *msg  = &_call.recvmsg.msg;
 
-			/* needed by AF_NETLINK */
-			struct sock_iocb siocb;
-			Genode::memset(&siocb, 0, sizeof(struct sock_iocb));
-			struct kiocb kiocb;
-			Genode::memset(&kiocb, 0, sizeof(struct kiocb));
-
-			kiocb.private_ = &siocb;
-
 			if (_call.handle->non_block)
 				msg->msg_flags |= MSG_DONTWAIT;
 
 			size_t iovlen = 0;
-			for (size_t i = 0; i < msg->msg_iovlen; i++)
-				iovlen += msg->msg_iov[i].iov_len;
+			for (size_t i = 0; i < msg->msg_iter.nr_segs; i++)
+				iovlen += msg->msg_iter.iov[i].iov_len;
 
-			_call.err = sock->ops->recvmsg(&kiocb, sock, msg, iovlen, _call.recvmsg.flags);
+			_call.err = sock->ops->recvmsg(sock, msg, iovlen, _call.recvmsg.flags);
 		}
 
 		void _do_sendmsg()
@@ -209,22 +202,14 @@ class Lx::Socket
 			struct socket *sock = _call_socket();
 			struct msghdr *msg  = const_cast<msghdr *>(&_call.sendmsg.msg);
 
-			/* needed by AF_NETLINK */
-			struct sock_iocb siocb;
-			Genode::memset(&siocb, 0, sizeof(struct sock_iocb));
-			struct kiocb kiocb;
-			Genode::memset(&kiocb, 0, sizeof(struct kiocb));
-
-			kiocb.private_ = &siocb;
-
 			if (_call.handle->non_block)
 				msg->msg_flags |= MSG_DONTWAIT;
 
 			size_t iovlen = 0;
-			for (size_t i = 0; i < msg->msg_iovlen; i++)
-				iovlen += msg->msg_iov[i].iov_len;
+			for (size_t i = 0; i < msg->msg_iter.nr_segs; i++)
+				iovlen += msg->msg_iter.iov[i].iov_len;
 
-			_call.err = sock->ops->sendmsg(&kiocb, sock, msg, iovlen);
+			_call.err = sock->ops->sendmsg(sock, msg, iovlen);
 		}
 
 		void _do_setsockopt()
@@ -321,7 +306,7 @@ class Lx::Socket
 					sock->sk->sk_wq = &wq[i];
 				}
 
-				long t = jiffies + msecs_to_jiffies(timeout);
+				long t = msecs_to_jiffies(timeout);
 				timeout_triggered = !schedule_timeout(t);
 
 				task->wait_dequeue(&wait_list);
@@ -349,7 +334,7 @@ class Lx::Socket
 
 	public:
 
-		Socket(Server::Entrypoint &ep)
+		Socket(Genode::Entrypoint &ep)
 		:
 			_dispatcher(ep, *this, &Lx::Socket::_handle),
 			_task(run_socketcall, nullptr, "socketcall",
@@ -374,7 +359,7 @@ class Lx::Socket
 
 			default:
 				_call.err = -EINVAL;
-				PWRN("unknown opcode: %u", _call.opcode);
+				Genode::warning("unknown opcode: ", (int)_call.opcode);
 				break;
 			}
 
@@ -391,12 +376,14 @@ class Lx::Socket
 
 
 static Lx::Socket *_socket;
+static Genode::Allocator *_alloc;
 
 
-void Lx::socket_init(Server::Entrypoint &ep)
+void Lx::socket_init(Genode::Entrypoint &ep, Genode::Allocator &alloc)
 {
 	static Lx::Socket socket_ctx(ep);
 	_socket = &socket_ctx;
+	_alloc = &alloc;
 }
 
 
@@ -437,7 +424,7 @@ Wifi::Socket *Socket_call::socket(int domain, int type, int protocol)
 	if (_call.socket.result == 0)
 		return 0;
 
-	Wifi::Socket *s = new (Genode::env()->heap()) Wifi::Socket(_call.socket.result);
+	Wifi::Socket *s = new (_alloc) Wifi::Socket(_call.socket.result);
 
 	return s;
 }
@@ -450,10 +437,11 @@ int Socket_call::close(Socket *s)
 
 	_socket->submit_and_block();
 
-	if (_call.err)
-		PWRN("error %d on close()", _call.err);
+	if (_call.err) {
+		Genode::error("closing socket failed: ", _call.err);
+	}
 
-	destroy(Genode::env()->heap(), s);
+	destroy(_alloc, s);
 	return 0;
 }
 
@@ -513,15 +501,16 @@ static int msg_flags(Wifi::Flags in)
 
 Wifi::ssize_t Socket_call::recvmsg(Socket *s, Wifi::Msghdr *msg, Wifi::Flags flags)
 {
-	_call.opcode                     = Call::RECVMSG;
-	_call.handle                     = s;
-	_call.recvmsg.msg.msg_name       = msg->msg_name;
-	_call.recvmsg.msg.msg_namelen    = msg->msg_namelen;
-	_call.recvmsg.msg.msg_iov        = _call.recvmsg.iov;
-	_call.recvmsg.msg.msg_iovlen     = msg->msg_iovlen;
-	_call.recvmsg.msg.msg_control    = msg->msg_control;
-	_call.recvmsg.msg.msg_controllen = msg->msg_controllen;
-	_call.recvmsg.flags              = msg_flags(flags);
+	_call.opcode                       = Call::RECVMSG;
+	_call.handle                       = s;
+	_call.recvmsg.msg.msg_name         = msg->msg_name;
+	_call.recvmsg.msg.msg_namelen      = msg->msg_namelen;
+	_call.recvmsg.msg.msg_iter.iov     = _call.recvmsg.iov;
+	_call.recvmsg.msg.msg_iter.nr_segs = msg->msg_iovlen;
+	_call.recvmsg.msg.msg_iter.count   = msg->msg_count;
+	_call.recvmsg.msg.msg_control      = msg->msg_control;
+	_call.recvmsg.msg.msg_controllen   = msg->msg_controllen;
+	_call.recvmsg.flags                = msg_flags(flags);
 
 	for (unsigned i = 0; i < msg->msg_iovlen; ++i) {
 		_call.recvmsg.iov[i].iov_base = msg->msg_iov[i].iov_base;
@@ -538,15 +527,16 @@ Wifi::ssize_t Socket_call::recvmsg(Socket *s, Wifi::Msghdr *msg, Wifi::Flags fla
 
 Wifi::ssize_t Socket_call::sendmsg(Socket *s, Wifi::Msghdr const *msg, Wifi::Flags flags)
 {
-	_call.opcode                     = Call::SENDMSG;
-	_call.handle                     = s;
-	_call.sendmsg.msg.msg_name       = msg->msg_name;
-	_call.sendmsg.msg.msg_namelen    = msg->msg_namelen;
-	_call.sendmsg.msg.msg_iov        = _call.sendmsg.iov;
-	_call.sendmsg.msg.msg_iovlen     = msg->msg_iovlen;
-	_call.sendmsg.msg.msg_control    = 0;
-	_call.sendmsg.msg.msg_controllen = 0;
-	_call.sendmsg.flags              = msg_flags(flags);
+	_call.opcode                       = Call::SENDMSG;
+	_call.handle                       = s;
+	_call.sendmsg.msg.msg_name         = msg->msg_name;
+	_call.sendmsg.msg.msg_namelen      = msg->msg_namelen;
+	_call.sendmsg.msg.msg_iter.iov     = _call.sendmsg.iov;
+	_call.sendmsg.msg.msg_iter.nr_segs = msg->msg_iovlen;
+	_call.sendmsg.msg.msg_iter.count   = msg->msg_count;
+	_call.sendmsg.msg.msg_control      = 0;
+	_call.sendmsg.msg.msg_controllen   = 0;
+	_call.sendmsg.flags                = msg_flags(flags);
 
 	for (unsigned i = 0; i < msg->msg_iovlen; ++i) {
 		_call.sendmsg.iov[i].iov_base = msg->msg_iov[i].iov_base;

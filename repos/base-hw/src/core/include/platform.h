@@ -21,14 +21,13 @@
 #include <irq_session/irq_session.h>
 
 /* base-hw includes */
-#include <kernel/log.h>
 #include <kernel/configuration.h>
 #include <kernel/core_interface.h>
 
 /* core includes */
 #include <translation_table_allocator_tpl.h>
 #include <platform_generic.h>
-#include <core_rm_session.h>
+#include <core_region_map.h>
 #include <core_mem_alloc.h>
 
 namespace Genode {
@@ -74,6 +73,11 @@ namespace Genode {
 			 * out the MMIO page to trusted user-level device drivers.
 			 */
 			 void _init_io_mem_alloc();
+
+			 /**
+			  * Perform additional platform-specific initialization.
+			  */
+			 void _init_additional();
 
 		public:
 
@@ -121,6 +125,19 @@ namespace Genode {
 			static void setup_irq_mode(unsigned irq_number, unsigned trigger,
 			                           unsigned polarity);
 
+			/**
+			 * Get MSI-related parameters from device PCI config space
+			 *
+			 * \param mmconf      PCI config space address of device
+			 * \param address     MSI address register value to use
+			 * \param data        MSI data register value to use
+			 * \param irq_number  IRQ to use
+			 *
+			 * \return  true if the device is MSI-capable, false if not
+			 */
+			static bool get_msi_params(const addr_t mmconf,
+			                           addr_t &address, addr_t &data,
+			                           unsigned &irq_number);
 			/**
 			 * Return address of cores translation table allocator
 			 */
@@ -171,4 +188,3 @@ namespace Genode {
 }
 
 #endif /* _CORE__INCLUDE__PLATFORM_H_ */
-

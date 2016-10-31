@@ -11,11 +11,11 @@
  * under the terms of the GNU General Public License version 2.
  */
 
-#include "mac.h"
+#include <mac.h>
 
 /**
  * We take the range 02:02:02:02:02:XX for our MAC address allocator,
  * it's likely, that we will have no clashes here.
  * (e.g. Linux uses 02:00... for its tap-devices.)
  */
-Net::Ethernet_frame::Mac_address Net::Mac_allocator::mac_addr_base(0x02);
+Net::Mac_address Net::Mac_allocator::mac_addr_base(0x02);

@@ -3,6 +3,12 @@ VBOX_CC_OPT += -DVBOX_WITH_GENERIC_SESSION_WATCHER
 
 include $(REP_DIR)/lib/mk/virtualbox-common.inc
 
+#
+# Prevent inclusion of the Genode::Log definition after the vbox #define
+# of 'Log'. Otherwise, the attemt to compile base/log.h will fail.
+#
+VBOX_CC_OPT += -include base/log.h
+
 CC_WARN += -Wall
 
 TARGET = virtualbox
@@ -10,9 +16,8 @@ SRC_CC = frontend/main.cc frontend/console.cc \
          frontend/VBoxAPIWrap/MediumFormatWrap.cpp \
          frontend/VBoxAPIWrap/TokenWrap.cpp \
          frontend/VirtualBoxErrorInfoImpl.cpp \
-         frontend/USBProxyDevice-genode.cpp \
          devices.cc drivers.cc dummies.cc libc.cc \
-         logger.cc mm.cc pdm.cc pgm.cc rt.cc sup.cc iommio.cc ioport.cc \
+         logger.cc mm.cc pdm.cc rt.cc sup.cc iommio.cc ioport.cc \
          hm.cc thread.cc dynlib.cc unimpl.cc
 
 LIBS  += base
@@ -24,14 +29,14 @@ LIBS  += virtualbox-bios virtualbox-recompiler virtualbox-runtime \
          virtualbox-storage virtualbox-zlib virtualbox-liblzf \
          virtualbox-hwaccl virtualbox-xml virtualbox-main
 
-LIBS  += pthread libc_terminal libc_lock_pipe libiconv
+LIBS  += pthread libc_terminal libc_pipe libiconv
+
+LIBS  += qemu-usb
 
 INC_DIR += $(call select_from_repositories,src/lib/libc)
 INC_DIR += $(call select_from_repositories,src/lib/pthread)
 
 INC_DIR += $(VBOX_DIR)/Runtime/include
-
-SRC_CC += HostDrivers/VBoxUSB/USBFilter.cpp
 
 SRC_CC += HostServices/SharedFolders/service.cpp
 SRC_CC += HostServices/SharedFolders/mappings.cpp
@@ -51,7 +56,6 @@ INC_DIR += $(REP_DIR)/src/virtualbox/frontend
 INC_DIR += $(REP_DIR)/src/virtualbox/frontend/VBoxAPIWrap
 
 INC_DIR += $(VBOX_DIR)/Main/xml
-INC_DIR += $(VBOX_DIR)/Devices/USB
 INC_DIR += $(VBOX_DIR)/HostServices
 
 # search path to 'scan_code_set_2.h'

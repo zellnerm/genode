@@ -11,13 +11,12 @@
  * under the terms of the GNU General Public License version 2.
  */
 
-#ifndef _TRANSLATION_TABLE_H_
-#define _TRANSLATION_TABLE_H_
+#ifndef _CORE__INCLUDE__SPEC__X86_64__TRANSLATION_TABLE_H_
+#define _CORE__INCLUDE__SPEC__X86_64__TRANSLATION_TABLE_H_
 
 /* Genode includes */
 #include <util/misc_math.h>
 #include <util/register.h>
-#include <base/printf.h>
 #include <assert.h>
 
 /* base-hw includes */
@@ -718,4 +717,4 @@ class Genode::Translation_table : public Pml4_table
 		};
 };
 
-#endif /* _TRANSLATION_TABLE_H_ */
+#endif /* _CORE__INCLUDE__SPEC__X86_64__TRANSLATION_TABLE_H_ */

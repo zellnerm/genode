@@ -34,6 +34,8 @@ constexpr bool verbose_exception  = false;
 constexpr bool verbose_shared     = false;
 constexpr bool verbose_loading    = false;
 
+extern Elf::Addr etext;
+
 /**
  * Forward declartions and helpers
  */
@@ -50,6 +52,13 @@ namespace Linker {
 	 * Eager binding enable
 	 */
 	extern bool bind_now;
+
+	/**
+	 * Print diagnostic information
+	 *
+	 * The value corresponds to the config attribute "ld_verbose".
+	 */
+	extern bool verbose;
 
 	/**
 	 * Find symbol via index
@@ -141,12 +150,13 @@ class Linker::Object : public Genode::Fifo<Object>::Element,
 
 		char        _name[MAX_PATH];
 		File const *_file = nullptr;
+		Elf::Addr   _reloc_base = 0;
 
 	public:
 
-		Object() { }
+		Object(Elf::Addr reloc_base) : _reloc_base(reloc_base) { }
 		Object(char const *path, File const *file)
-		: _file(file)
+		: _file(file), _reloc_base(file->reloc_base)
 		{
 			Genode::strncpy(_name, Linker::file(path), MAX_PATH);
 		}
@@ -157,8 +167,8 @@ class Linker::Object : public Genode::Fifo<Object>::Element,
 				destroy(Genode::env()->heap(), const_cast<File *>(_file));
 		}
 
-		Elf::Addr  reloc_base() const { return _file ? _file->reloc_base : 0; }
-		char const *name()      const { return _name; }
+		Elf::Addr reloc_base() const { return _reloc_base; }
+		char const *name() const { return _name; }
 
 		File      const *file() { return _file; }
 		Elf::Size const  size() const { return _file ? _file->size : 0; }
@@ -168,7 +178,7 @@ class Linker::Object : public Genode::Fifo<Object>::Element,
 
 		virtual void relocate() = 0;
 
-		virtual void load()   = 0;
+		virtual void load() = 0;
 		virtual bool unload() { return false;}
 
 		/**

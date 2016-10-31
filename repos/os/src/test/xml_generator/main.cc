@@ -39,7 +39,23 @@ static size_t fill_buffer_with_xml(char *dst, size_t dst_len)
 				xml.node("sub_sub_label");
 			});
 		});
-		xml.attribute("verbose", "true");
+		xml.node("bool", [&] ()
+		{
+			xml.attribute("true",  true);
+			xml.attribute("false", false);
+		});
+		xml.node("signed", [&] ()
+		{
+			xml.attribute("int",      -1);
+			xml.attribute("long",     -2L);
+			xml.attribute("longlong", -3LL);
+		});
+		xml.node("unsigned", [&] ()
+		{
+			xml.attribute("int",      1U);
+			xml.attribute("long",     2UL);
+			xml.attribute("longlong", 3ULL);
+		});
 	});
 
 	return xml.used();
@@ -59,7 +75,7 @@ int main(int argc, char **argv)
 	 * corresponding run script).
 	 */
 	size_t used = fill_buffer_with_xml(dst, sizeof(dst));
-	printf("result:\n\n%s\nused %zd bytes\n", dst, used);
+	printf("result:\n\n%s\nused %ld bytes\n", dst, used);
 
 	/*
 	 * Test buffer overflow
@@ -91,7 +107,7 @@ int main(int argc, char **argv)
 
 		/* compare result with original pattern */
 		if (decoded_len != sizeof(pattern)) {
-			printf("decoded content has unexpected length %zd\n", decoded_len);
+			printf("decoded content has unexpected length %ld\n", decoded_len);
 			return 1;
 		}
 		if (Genode::memcmp(decoded, pattern, sizeof(pattern))) {

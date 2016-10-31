@@ -107,7 +107,7 @@ append boot_modules {
 	libc.lib.so libm.lib.so lwip.lib.so
 	zlib.lib.so libpng.lib.so jpeg.lib.so libssl.lib.so libcrypto.lib.so
 	freetype.lib.so
-	libc_lock_pipe.lib.so
+	libc_pipe.lib.so
 	stdcxx.lib.so
 	nitpicker_plugin.tar
 }
@@ -142,7 +142,7 @@ build_boot_image $boot_modules
 
 append qemu_args " -m 512 "
 
-append_if [have_spec x86]     qemu_args " -net nic,model=pcnet "
+append_if [have_spec x86]     qemu_args " -net nic,model=e1000 "
 append_if [have_spec lan9118] qemu_args " -net nic,model=lan9118 "
 
 append qemu_args " -net user "

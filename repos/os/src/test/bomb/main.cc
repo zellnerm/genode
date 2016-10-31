@@ -24,7 +24,6 @@
 #include <cpu_session/connection.h>
 #include <rom_session/connection.h>
 #include <cap_session/connection.h>
-#include <rm_session/connection.h>
 #include <pd_session/connection.h>
 #include <timer_session/connection.h>
 
@@ -39,19 +38,26 @@ class Bomb_child_resources
 {
 	protected:
 
+		Genode::Session_label _rom_label;
+
 		Genode::Pd_connection  _pd;
 		Genode::Rom_connection _rom;
 		Genode::Ram_connection _ram;
 		Genode::Cpu_connection _cpu;
-		Genode::Rm_connection  _rm;
-		char                   _name[32];
 
-		Bomb_child_resources(const char *file_name, const char *name,
+		typedef String<32> Name;
+		Name _name;
+
+		Genode::Region_map_client _address_space { _pd.address_space() };
+
+		Bomb_child_resources(const char *elf_name, const char *name,
 		                     Genode::size_t ram_quota)
-		: _pd(name), _rom(file_name, name), _ram(name), _cpu(name)
+		:
+			_rom_label(Genode::prefixed_label(Genode::Session_label(name),
+			                                  Genode::Session_label(elf_name))),
+			_pd(name), _rom(_rom_label.string()),
+			_ram(name), _cpu(name), _name(name)
 		{
-			Genode::strncpy(_name, name, sizeof(_name));
-
 			_ram.ref_account(env()->ram_session_cap());
 			Genode::env()->ram_session()->transfer_quota(_ram.cap(), ram_quota);
 
@@ -65,10 +71,13 @@ class Bomb_child_resources
 
 class Bomb_child : private Bomb_child_resources,
                    public  Genode::Child_policy,
-                   private Init::Child_policy_enforce_labeling,
                    public  Genode::List<Bomb_child>::Element
 {
 	private:
+
+		Init::Child_policy_enforce_labeling _enforce_labeling_policy;
+
+		Genode::Child::Initial_thread _initial_thread;
 
 		/*
 		 * Entry point used for serving the parent interface
@@ -90,10 +99,12 @@ class Bomb_child : private Bomb_child_resources,
 		           unsigned          generation)
 		:
 			Bomb_child_resources(file_name, unique_name, ram_quota),
-			Init::Child_policy_enforce_labeling(Bomb_child_resources::_name),
+			_enforce_labeling_policy(_name.string()),
+			_initial_thread(_cpu, _pd, unique_name),
 			_entrypoint(cap_session, STACK_SIZE, "bomb_ep_child", false),
-			_child(_rom.dataspace(), _pd.cap(), _ram.cap(), _cpu.cap(),
-			       _rm.cap(), &_entrypoint, this),
+			_child(_rom.dataspace(), Genode::Dataspace_capability(),
+			       _pd, _pd, _ram, _ram, _cpu, _initial_thread,
+			       *Genode::env()->rm_session(), _address_space, _entrypoint, *this),
 			_parent_services(parent_services),
 			_config_policy("config", _entrypoint, &_ram)
 		{
@@ -105,18 +116,18 @@ class Bomb_child : private Bomb_child_resources,
 			_entrypoint.activate();
 		}
 
-		~Bomb_child() { PLOG("%s", __PRETTY_FUNCTION__); }
+		~Bomb_child() { Genode::log(__PRETTY_FUNCTION__); }
 
 
 		/****************************
 		 ** Child-policy interface **
 		 ****************************/
 
-		const char *name() const { return Bomb_child_resources::_name; }
+		const char *name() const { return Bomb_child_resources::_name.string(); }
 
 		void filter_session_args(const char * x, char *args, Genode::size_t args_len)
 		{
-			Child_policy_enforce_labeling::filter_session_args(0, args, args_len);
+			_enforce_labeling_policy.filter_session_args(0, args, args_len);
 		}
 
 		Service *resolve_session_request(const char *service_name,
@@ -246,7 +257,7 @@ int main(int argc, char **argv)
 	unsigned const sleeptime   = node.attribute_value("sleep", 2000U);
 	unsigned long const demand = node.attribute_value("demand", 1024UL * 1024);
 
-	printf("--- bomb started ---\n");
+	log("--- bomb started ---");
 
 	/* connect to core's cap service used for creating parent capabilities */
 	Cap_connection cap;
@@ -262,12 +273,11 @@ int main(int argc, char **argv)
 	unsigned long avail = env()->ram_session()->avail();
 	unsigned long amount = (avail - demand) / children;
 	if (amount < (demand * children)) {
-		PLOG("I'm a leaf node - generation %u - not enough memory.",
-		     generation);
+		log("I'm a leaf node - generation ", generation, " - not enough memory.");
 		sleep_forever();
 	}
 	if (generation == 0) {
-		PLOG("I'm a leaf node - generation 0");
+		log("I'm a leaf node - generation 0");
 		sleep_forever();
 	}
 
@@ -287,7 +297,7 @@ int main(int argc, char **argv)
 		}
 
 		timer()->msleep(sleeptime);
-		PINF("[%03d] It's time to kill all my children...", round);
+		log("[", round, "] It's time to kill all my children...");
 
 		while (1) {
 			Bomb_child *c;
@@ -301,12 +311,12 @@ int main(int argc, char **argv)
 			else break;
 		}
 
-		PINF("[%03d] Done.", round);
+		log("[", round, "] Done.");
 	}
 
 	/* master if we have a timer connection */
 	if (timer())
-		PINF("Done. Going to sleep");
+		log("Done. Going to sleep");
 
 	sleep_forever();
 	return 0;

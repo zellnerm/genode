@@ -15,12 +15,14 @@
 #define _L4LX__TASK_H_
 
 /* Genode includes */
-#include <foc_pd_session/connection.h>
+#include <pd_session/connection.h>
+#include <foc_native_pd/client.h>
 #include <util/avl_tree.h>
 
 namespace Fiasco {
 #include <l4/sys/types.h>
 #include <l4/sys/consts.h>
+#include <l4/sys/task.h>
 }
 
 namespace L4lx {
@@ -30,9 +32,10 @@ namespace L4lx {
 	{
 		private:
 
-			Fiasco::l4_cap_idx_t      _ref;
-			Genode::Foc_pd_connection _pd;
-			Genode::Native_capability _cap;
+			Fiasco::l4_cap_idx_t         _ref;
+			Genode::Pd_connection        _pd;
+			Genode::Foc_native_pd_client _native_pd { _pd.native_pd() };
+			Genode::Native_capability    _cap;
 
 		public:
 
@@ -40,13 +43,16 @@ namespace L4lx {
 			 ** Constructor **
 			 *****************/
 
-			Task(Fiasco::l4_cap_idx_t ref) : _ref(ref), _cap(_pd.task_cap())
+			Task(Fiasco::l4_cap_idx_t ref)
+			:
+				_ref(ref), _cap(_native_pd.task_cap())
 			{
 				using namespace Fiasco;
 
 				/* remap task cap to given cap slot */
 				l4_task_map(L4_BASE_TASK_CAP, L4_BASE_TASK_CAP,
-							l4_obj_fpage(_cap.dst(), 0, L4_FPAGE_RWX),
+							l4_obj_fpage(Genode::Capability_space::kcap(_cap),
+							             0, L4_FPAGE_RWX),
 							_ref | L4_ITEM_MAP);
 			}
 

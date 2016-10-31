@@ -13,12 +13,12 @@
  */
 
 /* Genode includes */
-#include <base/printf.h>
-#include <base/native_types.h>
+#include <base/log.h>
+#include <base/native_capability.h>
 
 /* core includes */
-#include <signal_session_component.h>
 #include <platform.h>
+#include <signal_source_component.h>
 
 namespace Fiasco {
 #include <l4/sys/factory.h>
@@ -34,22 +34,21 @@ using namespace Genode;
 
 void Signal_source_component::release(Signal_context_component *context)
 {
-	if (context && context->is_enqueued())
+	if (context && context->enqueued())
 		_signal_queue.remove(context);
 }
 
 void Signal_source_component::submit(Signal_context_component *context,
-                                     Ipc_ostream              *ostream,
-                                     int                       cnt)
+                                     unsigned long             cnt)
 {
 	/* enqueue signal to context */
 	context->increment_signal_cnt(cnt);
 
-	if (!context->is_enqueued()) {
+	if (!context->enqueued()) {
 		_signal_queue.enqueue(context);
 
 		/* wake up client */
-		Fiasco::l4_irq_trigger(_blocking_semaphore.dst());
+		Fiasco::l4_irq_trigger(_blocking_semaphore.data()->kcap());
 	}
 }
 
@@ -57,7 +56,7 @@ void Signal_source_component::submit(Signal_context_component *context,
 Signal_source::Signal Signal_source_component::wait_for_signal()
 {
 	if (_signal_queue.empty()) {
-		PWRN("unexpected call of wait_for_signal");
+		warning("unexpected call of wait_for_signal");
 		return Signal(0, 0);
 	}
 
@@ -71,16 +70,16 @@ Signal_source::Signal Signal_source_component::wait_for_signal()
 
 Signal_source_component::Signal_source_component(Rpc_entrypoint *ep)
 :
-	Signal_source_rpc_object(cap_map()->insert(platform_specific()->cap_id_alloc()->alloc())),
+	Signal_source_rpc_object(*cap_map()->insert(platform_specific()->cap_id_alloc()->alloc())),
 	_entrypoint(ep), _finalizer(*this),
 	_finalizer_cap(_entrypoint->manage(&_finalizer))
 {
 	using namespace Fiasco;
 
 	l4_msgtag_t res = l4_factory_create_irq(L4_BASE_FACTORY_CAP,
-	                                        _blocking_semaphore.dst());
+	                                        _blocking_semaphore.data()->kcap());
 	if (l4_error(res))
-		PERR("Allocation of irq object failed!");
+		error("Allocation of irq object failed!");
 }
 
 

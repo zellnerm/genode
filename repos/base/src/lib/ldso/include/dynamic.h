@@ -21,13 +21,6 @@ namespace Linker {
 	struct Dynamic;
 }
 
-	/**
-	 * Offset of dynamic section of this ELF. This is filled out during linkage by
-	 * static linker.
-	 */
-	extern Genode::addr_t _DYNAMIC;
-
-
 /**
  * ELF hash table and hash function
  */
@@ -108,7 +101,7 @@ struct Linker::Dynamic
 
 	Dynamic(Dependency const *dep)
 	:
-	  dep(dep), obj(dep->obj), dynamic((Elf::Dyn *)(obj->reloc_base() + &_DYNAMIC))
+	  dep(dep), obj(dep->obj), dynamic((Elf::Dyn *)dynamic_address())
 	{
 		init();
 	}
@@ -192,7 +185,7 @@ struct Linker::Dynamic
 					Reloc_plt(obj, pltrel_type, pltrel, pltrel_size);
 					break;
 				default:
-					PERR("LD: Invalid PLT relocation %u", pltrel_type);
+					Genode::error("LD: Invalid PLT relocation ", (int)pltrel_type);
 					throw Incompatible();
 			}
 		}

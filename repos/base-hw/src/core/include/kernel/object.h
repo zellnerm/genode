@@ -11,8 +11,8 @@
  * under the terms of the GNU General Public License version 2.
  */
 
-#ifndef _KERNEL__OBJECT_H_
-#define _KERNEL__OBJECT_H_
+#ifndef _CORE__INCLUDE__KERNEL__OBJECT_H_
+#define _CORE__INCLUDE__KERNEL__OBJECT_H_
 
 /* Genode includes */
 #include <util/avl_tree.h>
@@ -106,6 +106,7 @@ class Kernel::Object_identity_reference
 		capid_t          _capid;
 		Object_identity *_identity;
 		Pd              &_pd;
+		unsigned short   _in_utcbs;
 
 	public:
 
@@ -124,6 +125,10 @@ class Kernel::Object_identity_reference
 
 		Pd &    pd()     { return _pd;    }
 		capid_t capid()  { return _capid; }
+
+		void add_to_utcb()      { _in_utcbs++; }
+		void remove_from_utcb() { _in_utcbs--; }
+		bool in_utcb()          { return _in_utcbs > 0; }
 
 		void invalidate();
 
@@ -185,4 +190,4 @@ class Kernel::Core_object : public T, public Kernel::Core_object_identity<T>
 		: T(args...), Core_object_identity<T>(*static_cast<T*>(this)) { }
 };
 
-#endif /* _KERNEL__OBJECT_H_ */
+#endif /* _CORE__INCLUDE__KERNEL__OBJECT_H_ */

@@ -15,6 +15,7 @@
 #define _LIB__LDSO__SPEC__ARM__RELOCATION_H_
 
 #include <relocation_generic.h>
+#include <dynamic_generic.h>
 
 namespace Linker {
 	enum Reloc_types {
@@ -80,7 +81,7 @@ class Linker::Reloc_non_plt : public Reloc_non_plt_generic
 		Reloc_non_plt(Dependency const *dep, Elf::Rela const *, unsigned long)
 		: Reloc_non_plt_generic(dep)
 		{
-			PERR("LD: DT_RELA not supported");
+			Genode::error("LD: DT_RELA not supported");
 			throw Incompatible();
 		}
 
@@ -104,7 +105,7 @@ class Linker::Reloc_non_plt : public Reloc_non_plt_generic
 					case R_RELATIVE: _relative(addr);                   break;
 					default:
 						if (_dep->root) {
-							PWRN("LD: Unkown relocation %u", rel->type());
+							Genode::warning("LD: Unkown relocation ", (int)rel->type());
 							throw Incompatible();
 						}
 						break;

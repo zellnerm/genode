@@ -18,8 +18,11 @@
 #include <base/semaphore.h>
 #include <base/thread.h>
 #include <nic_session/connection.h>
+#include <os/server.h>
 #include <net/ethernet.h>
 #include <net/ipv4.h>
+
+#include <vlan.h>
 
 namespace Net {
 
@@ -38,11 +41,12 @@ class Net::Packet_handler
 	private:
 
 		Packet_descriptor _packet;
+		Net::Vlan        &_vlan;
 
 		/**
 		 * submit queue not empty anymore
 		 */
-		void _ready_to_submit(unsigned);
+		void _ready_to_submit();
 
 		/**
 		 * acknoledgement queue not full anymore
@@ -50,12 +54,12 @@ class Net::Packet_handler
 		 * TODO: by now, we assume ACK and SUBMIT queue to be equally
 		 *       dimensioned. That's why we ignore this signal by now.
 		 */
-		void _ack_avail(unsigned) { }
+		void _ack_avail() { }
 
 		/**
 		 * acknoledgement queue not empty anymore
 		 */
-		void _ready_to_ack(unsigned);
+		void _ready_to_ack();
 
 		/**
 		 * submit queue not full anymore
@@ -63,28 +67,29 @@ class Net::Packet_handler
 		 * TODO: by now, we just drop packets that cannot be transferred
 		 *       to the other side, that's why we ignore this signal.
 		 */
-		void _packet_avail(unsigned) { }
+		void _packet_avail() { }
 
 		/**
 		 * the link-state of changed
 		 */
-		void _link_state(unsigned);
+		void _link_state();
 
 	protected:
 
-		Genode::Signal_dispatcher<Packet_handler> _sink_ack;
-		Genode::Signal_dispatcher<Packet_handler> _sink_submit;
-		Genode::Signal_dispatcher<Packet_handler> _source_ack;
-		Genode::Signal_dispatcher<Packet_handler> _source_submit;
-		Genode::Signal_dispatcher<Packet_handler> _client_link_state;
+		Genode::Signal_handler<Packet_handler> _sink_ack;
+		Genode::Signal_handler<Packet_handler> _sink_submit;
+		Genode::Signal_handler<Packet_handler> _source_ack;
+		Genode::Signal_handler<Packet_handler> _source_submit;
+		Genode::Signal_handler<Packet_handler> _client_link_state;
 
 	public:
 
-		Packet_handler();
+		Packet_handler(Genode::Entrypoint&, Vlan&);
 
 		virtual Packet_stream_sink< ::Nic::Session::Policy>   * sink()   = 0;
 		virtual Packet_stream_source< ::Nic::Session::Policy> * source() = 0;
 
+		Net::Vlan & vlan() { return _vlan; }
 
 		/**
 		 * Broadcasts ethernet frame to all clients,

@@ -28,7 +28,7 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
  * OTHER DEALINGS IN THE SOFTWARE.
  */
-#include <base/printf.h>
+#include <base/log.h>
 #include <input_session/connection.h>
 #include <input/event.h>
 #include <input/keycodes.h>
@@ -41,7 +41,6 @@ extern "C" {
 #include "SDL_genode_fb_events.h"
 
 	static Input::Connection *input = 0;
-	static Input::Event *ev_buf = 0;
 	static const int KEYNUM_MAX = 512;
 	static SDLKey keymap[KEYNUM_MAX];
 	static int buttonmap[KEYNUM_MAX];
@@ -59,17 +58,14 @@ extern "C" {
 
 	void Genode_Fb_PumpEvents(SDL_VideoDevice *t)
 	{
-		if (!input->is_pending())
+		if (!input->pending())
 			return;
-		int num_ev = input->flush();
-		for (int src_ev_cnt = 0; src_ev_cnt < num_ev; src_ev_cnt++)
-		{
-			Input::Event curr = ev_buf[src_ev_cnt];
+		input->for_each_event([&] (Input::Event const &curr) {
 			SDL_keysym ksym;
 			switch(curr.type())
 			{
 			case Input::Event::MOTION:
-				if (curr.is_absolute_motion())
+				if (curr.absolute_motion())
 					SDL_PrivateMouseMotion(0, 0, curr.ax(), curr.ay());
 				else
 					SDL_PrivateMouseMotion(0, 1, curr.rx(), curr.ry());
@@ -97,12 +93,12 @@ extern "C" {
 					                    &ksym));
 				break;
 			case Input::Event::WHEEL:
-				PWRN("Mouse wheel, not implemented yet!");
+				Genode::warning("mouse wheel, not implemented yet");
 				break;
 			default:
 				break;
 			}
-		}
+		});
 	}
 
 
@@ -112,12 +108,9 @@ extern "C" {
 		input = new(Genode::env()->heap()) Connection();
 		if(!input->cap().valid())
 		{
-			PERR("No input driver available!");
+			Genode::error("no input driver available!");
 			return;
 		}
-
-		/* Attach event buffer to address space */
-		ev_buf = Genode::env()->rm_session()->attach(input->dataspace());
 
 		/* Prepare button mappings */
 		for (int i=0; i<KEYNUM_MAX; i++)
@@ -344,7 +337,7 @@ extern "C" {
 			case KEY_PROG2: keymap[i]=SDLK_UNKNOWN; break;
 			case KEY_WWW: keymap[i]=SDLK_UNKNOWN; break;
 			case KEY_MSDOS: keymap[i]=SDLK_UNKNOWN; break;
-			case KEY_COFFEE: keymap[i]=SDLK_UNKNOWN; break;
+			case KEY_SCREENLOCK: keymap[i]=SDLK_UNKNOWN; break;
 			case KEY_DIRECTION: keymap[i]=SDLK_UNKNOWN; break;
 			case KEY_CYCLEWINDOWS: keymap[i]=SDLK_UNKNOWN; break;
 			case KEY_MAIL: keymap[i]=SDLK_UNKNOWN; break;

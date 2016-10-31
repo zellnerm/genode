@@ -1,5 +1,5 @@
 /*
- * \brief  Test for the 'Thread_base::join()' function
+ * \brief  Test for the 'Thread::join()' function
  * \author Norman Feske
  * \date   2012-11-16
  */
@@ -11,14 +11,14 @@
  * under the terms of the GNU General Public License version 2.
  */
 
-#include <base/printf.h>
+#include <base/log.h>
 #include <base/thread.h>
 #include <timer_session/connection.h>
 
 using namespace Genode;
 
 
-struct Worker : Genode::Thread<4096>
+struct Worker : Genode::Thread_deprecated<4096>
 {
 	Timer::Session   &timer;
 	unsigned    const result_value;
@@ -26,17 +26,17 @@ struct Worker : Genode::Thread<4096>
 
 	void entry()
 	{
-		PLOG("worker thread is up");
+		log("worker thread is up");
 		timer.msleep(250);
 
-		PLOG("worker is leaving the entry function with result=%u...",
-		     result_value);
+		log("worker is leaving the entry function with "
+		    "result=", result_value, "...");
 		result = result_value;
 	}
 
 	Worker(Timer::Session &timer, int result_value)
 	:
-		Thread("worker"),
+		Thread_deprecated("worker"),
 		timer(timer), result_value(result_value), result(~0)
 	{
 		start();
@@ -49,7 +49,7 @@ struct Worker : Genode::Thread<4096>
  */
 int main(int, char **)
 {
-	printf("--- thread join test ---\n");
+	log("--- thread join test ---");
 
 	Timer::Connection timer;
 
@@ -65,11 +65,11 @@ int main(int, char **)
 		worker.join();
 
 		if (worker.result != i) {
-			PERR("work remains unfinished after 'join()' returned");
+			error("work remains unfinished after 'join()' returned");
 			return -1;
 		}
 	}
 
-	printf("--- signalling test finished ---\n");
+	log("--- signalling test finished ---");
 	return 0;
 }

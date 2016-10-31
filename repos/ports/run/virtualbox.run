@@ -34,12 +34,15 @@ set config {
 		<service name="IRQ"/>
 		<service name="IO_MEM"/>
 		<service name="IO_PORT"/>
-		<service name="CAP"/>
 		<service name="PD"/>
 		<service name="RM"/>
 		<service name="CPU"/>
-		<service name="LOG"/>
-		<service name="SIGNAL"/>
+		<service name="LOG"/>}
+
+append_if [have_spec muen] config {
+		<service name="VM"/>}
+
+append config {
 	</parent-provides>
 	<default-route>
 		<any-service> <parent/> <any-child/> </any-service>
@@ -60,8 +63,15 @@ append_if [expr $use_ps2] config {
 append_if [expr $use_usb] config {
 	<start name="usb_drv" priority="-1">
 		<resource name="RAM" quantum="7M"/>
-		<provides><service name="Input"/></provides>
-		<config uhci="yes" ehci="yes" xhci="yes">
+		<provides><service name="Input"/></provides>}
+
+append_if [expr $use_usb && ![have_spec hw_x86_64_muen]] config {
+		<config uhci="yes" ehci="yes" xhci="yes">}
+
+append_if [expr $use_usb && [have_spec hw_x86_64_muen]] config {
+		<config uhci="no" ehci="no" xhci="yes">}
+
+append_if [expr $use_usb] config {
 			<hid/>
 		</config>
 	</start>}
@@ -140,8 +150,9 @@ lappend_if [have_spec       linux] boot_modules fb_sdl
 lappend_if [have_spec         x86] boot_modules rtc_drv
 
 append boot_modules {
-	ld.lib.so libc.lib.so libm.lib.so pthread.lib.so libc_lock_pipe.lib.so
+	ld.lib.so libc.lib.so libm.lib.so pthread.lib.so libc_pipe.lib.so
 	libc_terminal.lib.so libiconv.lib.so stdcxx.lib.so
+	qemu-usb.lib.so
 }
 
 append_if [expr $use_net]          boot_modules { nic_drv }

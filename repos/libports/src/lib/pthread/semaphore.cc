@@ -12,9 +12,8 @@
  * under the terms of the GNU General Public License version 2.
  */
 
-#include <base/printf.h>
-#include <os/timed_semaphore.h>
-
+#include <base/env.h>
+#include <base/log.h>
 #include <semaphore.h>
 
 using namespace Genode;
@@ -25,15 +24,15 @@ extern "C" {
 	 * This class is named 'struct sem' because the 'sem_t' type is
 	 * defined as 'struct sem*' in 'semaphore.h'
 	 */
-	struct sem : Timed_semaphore
+	struct sem : Semaphore
 	{
-		sem(int value) : Timed_semaphore(value) { }
+		sem(int value) : Semaphore(value) { }
 	};
 
 
 	int sem_close(sem_t *)
 	{
-		PDBG("not implemented");
+		warning(__func__, " not implemented");
 		return -1;
 	}
 
@@ -61,7 +60,7 @@ extern "C" {
 
 	sem_t *sem_open(const char *, int, ...)
 	{
-		PDBG("not implemented");
+		warning(__func__, " not implemented");
 		return 0;
 	}
 
@@ -75,21 +74,21 @@ extern "C" {
 
 	int sem_timedwait(sem_t * __restrict, const struct timespec * __restrict)
 	{
-		PDBG("not implemented");
+		warning(__func__, " not implemented");
 		return -1;
 	}
 
 
 	int sem_trywait(sem_t *)
 	{
-		PDBG("not implemented");
+		warning(__func__, " not implemented");
 		return -1;
 	}
 
 
 	int sem_unlink(const char *)
 	{
-		PDBG("not implemented");
+		warning(__func__, " not implemented");
 		return -1;
 	}
 

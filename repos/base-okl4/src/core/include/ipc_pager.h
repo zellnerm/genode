@@ -17,7 +17,6 @@
 #include <base/cache.h>
 #include <base/ipc.h>
 #include <base/stdint.h>
-#include <base/native_types.h>
 
 namespace Okl4 { extern "C" {
 #include <l4/types.h>
@@ -161,12 +160,12 @@ namespace Genode {
 			/**
 			 * Return true if last fault was a write fault
 			 */
-			bool is_write_fault() const { return L4_Label(_faulter_tag) & 2; }
+			bool write_fault() const { return L4_Label(_faulter_tag) & 2; }
 
 			/**
 			 * Return true if last fault was an exception
 			 */
-			bool is_exception() const
+			bool exception() const
 			{
 				/*
 				 * A page-fault message has one of the op bits (lower 3 bits of the

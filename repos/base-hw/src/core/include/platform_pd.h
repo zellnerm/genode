@@ -40,7 +40,7 @@ namespace Genode
 {
 	class Platform_thread; /* forward declaration */
 
-	class Capability_space;
+	class Cap_space;
 
 	/**
 	 * Platform specific part of a Genode protection domain
@@ -128,7 +128,7 @@ class Hw::Address_space : public Genode::Address_space
 };
 
 
-class Genode::Capability_space
+class Genode::Cap_space
 {
 	private:
 
@@ -142,7 +142,7 @@ class Genode::Capability_space
 
 	public:
 
-		Capability_space();
+		Cap_space();
 
 		Cap_slab & capability_slab() { return _slab; }
 
@@ -151,7 +151,7 @@ class Genode::Capability_space
 
 
 class Genode::Platform_pd : public Hw::Address_space,
-                            public Genode::Capability_space,
+                            public Genode::Cap_space,
                             public Kernel_object<Kernel::Pd>
 {
 	private:
@@ -187,11 +187,8 @@ class Genode::Platform_pd : public Hw::Address_space,
 
 		/**
 		 * Bind thread 't' to protection domain
-		 *
-		 * \return  0  on success or
-		 *         -1  if failed
 		 */
-		int bind_thread(Platform_thread * t);
+		bool bind_thread(Platform_thread * t);
 
 		/**
 		 * Unbind thread 't' from protection domain
@@ -202,7 +199,7 @@ class Genode::Platform_pd : public Hw::Address_space,
 		/**
 		 * Assign parent interface to protection domain
 		 */
-		int assign_parent(Native_capability parent);
+		void assign_parent(Native_capability parent);
 
 
 		/***************
@@ -240,4 +237,3 @@ class Genode::Core_platform_pd : public Genode::Platform_pd
 };
 
 #endif /* _CORE__INCLUDE__PLATFORM_PD_H_ */
-

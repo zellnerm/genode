@@ -13,7 +13,7 @@
 
 /* Genode includes */
 #include <base/env.h>
-#include <base/printf.h>
+#include <base/log.h>
 #include <base/snprintf.h>
 #include <util/list.h>
 #include <util/string.h>
@@ -52,7 +52,7 @@ extern "C" {
 static const bool trace = true;
 #define TRACE() \
 	do { if (trace) \
-			PDBG("called from: %p", __builtin_return_address(0)); \
+			Genode::log("called from: ", __builtin_return_address(0)); \
 	} while (0)
 
 
@@ -168,7 +168,7 @@ ssize_t recvfrom(int sockfd, void *buf, size_t len, int flags,
 {
 	Socket *s = Socket_registry::find(sockfd);
 	if (!s) {
-		PERR("sockfd %d not in registry", sockfd);
+		Genode::error("sockfd ", sockfd, " not in registry");
 		errno = EBADF;
 		return -1;
 	}
@@ -180,6 +180,7 @@ ssize_t recvfrom(int sockfd, void *buf, size_t len, int flags,
 	w_msg.msg_iovlen          = 1;
 	w_msg.msg_iov[0].iov_base = buf;
 	w_msg.msg_iov[0].iov_len  = len;
+	w_msg.msg_count           = len;
 
 	/* FIXME convert to/from Sockaddr */
 	/* FIXME flags values */
@@ -202,8 +203,8 @@ ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags)
 	}
 
 	if (msg->msg_iovlen > Wifi::Msghdr::MAX_IOV_LEN) {
-		PERR("%s: %d exceeds maximum iov length (%d)",
-		     __func__, msg->msg_iovlen, Wifi::Msghdr::MAX_IOV_LEN);
+		Genode::error(__func__, ": ", msg->msg_iovlen, " exceeds maximum iov "
+		              "length (", (int)Wifi::Msghdr::MAX_IOV_LEN, ")");
 		errno = EINVAL;
 		return -1;
 	}
@@ -221,6 +222,7 @@ ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags)
 	for (unsigned i = 0; i < w_msg.msg_iovlen; ++i) {
 		w_msg.msg_iov[i].iov_base = msg->msg_iov[i].iov_base;
 		w_msg.msg_iov[i].iov_len  = msg->msg_iov[i].iov_len;
+		w_msg.msg_count          += msg->msg_iov[i].iov_len;
 	}
 
 	w_msg.msg_control    = msg->msg_control;
@@ -255,18 +257,18 @@ ssize_t sendmsg(int sockfd, const struct msghdr *msg, int flags)
 	}
 
 	if (msg->msg_iovlen > Wifi::Msghdr::MAX_IOV_LEN) {
-		PERR("%s: %d exceeds maximum iov length (%d)",
-		     __func__, msg->msg_iovlen, Wifi::Msghdr::MAX_IOV_LEN);
+		Genode::error(__func__, ": ", msg->msg_iovlen, " exceeds maximum iov "
+		              "length (", (int)Wifi::Msghdr::MAX_IOV_LEN, ")");
 		errno = EINVAL;
 		return -1;
 	}
 	if (msg->msg_controllen != 0) {
-		PERR("%s: msg_control not supported", __func__);
+		Genode::error(__func__, ": msg_control not supported");
 		errno = EINVAL;
 		return -1;
 	}
 	if (flags != 0) {
-		PERR("%s: flags not supported", __func__);
+		Genode::error(__func__, ": flags not supported");
 		errno = EOPNOTSUPP;
 		return -1;
 	}
@@ -279,6 +281,7 @@ ssize_t sendmsg(int sockfd, const struct msghdr *msg, int flags)
 	for (unsigned i = 0; i < w_msg.msg_iovlen; ++i) {
 		w_msg.msg_iov[i].iov_base = msg->msg_iov[i].iov_base;
 		w_msg.msg_iov[i].iov_len  = msg->msg_iov[i].iov_len;
+		w_msg.msg_count          += msg->msg_iov[i].iov_len;
 	}
 
 	int const err = socket_call.sendmsg(s, &w_msg, Wifi::WIFI_F_NONE);
@@ -306,6 +309,7 @@ ssize_t sendto(int sockfd, const void *buf, size_t len, int flags,
 	w_msg.msg_iovlen          = 1;
 	w_msg.msg_iov[0].iov_base = const_cast<void*>(buf);
 	w_msg.msg_iov[0].iov_len  = len;
+	w_msg.msg_count           = len;
 
 	/* FIXME convert to/from Sockaddr */
 	/* FIXME flags values */
@@ -433,7 +437,7 @@ int fcntl(int fd, int cmd, ... /* arg */ )
 			return 0;
 		}
 	default:
-		PWRN("fcntl: unknown request: %d", cmd);
+		Genode::warning("fcntl: unknown request: ", cmd);
 		break;
 	}
 

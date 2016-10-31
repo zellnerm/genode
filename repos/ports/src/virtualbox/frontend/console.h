@@ -13,7 +13,7 @@
  */
 
 /* Genode includes */
-#include <base/printf.h>
+#include <base/log.h>
 #include <input/event.h>
 #include <input/keycodes.h>
 #include <input_session/connection.h>
@@ -87,12 +87,11 @@ class Scan_code
 
 		Scan_code(Input::Keycode keycode) : _keycode(keycode) { }
 
-		bool is_normal() const { return converter().scan_code[_keycode]; }
-		bool is_ext()    const { return converter().scan_code_ext[_keycode]; }
+		bool normal() const { return converter().scan_code[_keycode]; }
 
 		bool valid() const
 		{
-			return is_normal() || is_ext();
+			return normal() || ext();
 		}
 
 		unsigned char code() const
@@ -113,7 +112,6 @@ class GenodeConsole : public Console {
 
 		Input::Connection                         _input;
 		Genode::Signal_receiver                   _receiver;
-		Input::Event                             *_ev_buf;
 		unsigned                                  _ax, _ay;
 		bool                                      _last_received_motion_event_was_absolute;
 		Report::Connection                        _shape_report_connection;
@@ -129,7 +127,7 @@ class GenodeConsole : public Console {
 
 		bool _key_status[Input::KEY_MAX + 1];
 
-		static bool _is_mouse_button(Input::Keycode keycode)
+		static bool _mouse_button(Input::Keycode keycode)
 		{
 			return keycode == Input::BTN_LEFT
 			    || keycode == Input::BTN_RIGHT
@@ -141,7 +139,6 @@ class GenodeConsole : public Console {
 		GenodeConsole()
 		:
 			Console(),
-			_ev_buf(static_cast<Input::Event *>(Genode::env()->rm_session()->attach(_input.dataspace()))),
 			_ax(0), _ay(0),
 			_last_received_motion_event_was_absolute(false),
 			_shape_report_connection("shape", sizeof(Vbox_pointer::Shape_report)),
@@ -194,8 +191,8 @@ class GenodeConsole : public Console {
 			size_t shape_size = shape_array.size() - (shape - and_mask);
 
 			if (shape_size > Vbox_pointer::MAX_SHAPE_SIZE) {
-				PERR("%s: shape data buffer is too small for %zu bytes",
-				     __func__, shape_size);
+				Genode::error(__func__, ": shape data buffer is too small "
+				              "for ", shape_size, " bytes");
 				return;
 			}
 

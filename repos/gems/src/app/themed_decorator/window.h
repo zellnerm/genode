@@ -161,7 +161,7 @@ class Decorator::Window : public Window_base, public Animator::Item
 					char buf[128];
 					Genode::snprintf(buf, sizeof(buf), "%d", id);
 
-					_nitpicker.enqueue<Command::Title>(_handle, buf);
+					_nitpicker.enqueue<Command::Title>(_handle, Genode::Cstring(buf));
 				}
 			}
 
@@ -371,7 +371,7 @@ class Decorator::Window : public Window_base, public Animator::Item
 			outer_geometry().cut(geometry(), top, left, right, bottom);
 		}
 
-		bool is_in_front_of(Window_base const &neighbor) const override
+		bool in_front_of(Window_base const &neighbor) const override
 		{
 			return _neighbor == neighbor.frontmost_view();
 		}

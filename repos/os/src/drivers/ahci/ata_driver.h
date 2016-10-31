@@ -14,6 +14,7 @@
 #ifndef _ATA_DRIVER_H_
 #define _ATA_DRIVER_H_
 
+#include <base/log.h>
 #include "ahci.h"
 
 using namespace Genode;
@@ -25,6 +26,9 @@ using namespace Genode;
 struct Identity : Genode::Mmio
 {
 	Identity(Genode::addr_t base) : Mmio(base) { }
+
+	struct Serial_number : Register_array<0x14, 8, 20, 8> { };
+	struct Model_number : Register_array<0x36, 8, 40, 8> { };
 
 	struct Queue_depth : Register<0x96, 16>
 	{
@@ -54,22 +58,59 @@ struct Identity : Genode::Mmio
 
 	void info()
 	{
-		PLOG("\t\tqueue depth: %u ncq: %u",
-		     read<Queue_depth::Max_depth>() + 1,
-		     read<Sata_caps::Ncq_support>());
-		PLOG("\t\tnumer of sectors: %llu", read<Sector_count>());
-		PLOG("\t\tmultiple logical blocks per physical: %s",
-		     read<Logical_block::Multiple>() ? "yes" : "no");
-		PLOG("\t\tlogical blocks per physical: %u",
-		     1U << read<Logical_block::Per_physical>());
-		PLOG("\t\tlogical block size is above 512 byte: %s",
-		     read<Logical_block::Longer_512>() ? "yes" : "no");
-		PLOG("\t\twords (16bit) per logical block: %u",
-		     read<Logical_words>());
-		PLOG("\t\toffset of first logical block within physical: %u",
-		     read<Alignment::Logical_offset>());
+		using Genode::log;
+
+		log("  queue depth: ", read<Queue_depth::Max_depth>() + 1, " "
+		    "ncq: ", read<Sata_caps::Ncq_support>());
+		log("  numer of sectors: ", read<Sector_count>());
+		log("  multiple logical blocks per physical: ",
+		    read<Logical_block::Multiple>() ? "yes" : "no");
+		log("  logical blocks per physical: ",
+		    1U << read<Logical_block::Per_physical>());
+		log("  logical block size is above 512 byte: ",
+		    read<Logical_block::Longer_512>() ? "yes" : "no");
+		log("  words (16bit) per logical block: ",
+		    read<Logical_words>());
+		log("  offset of first logical block within physical: ",
+		    read<Alignment::Logical_offset>());
 	}
 };
+
+
+/**
+ * 16-bit word big endian device ASCII characters
+ */
+template <typename DEVICE_STRING>
+struct String
+{
+	char buf[DEVICE_STRING::ITEMS + 1];
+
+	String(Identity & info)
+	{
+		long j = 0;
+		for (unsigned long i = 0; i < DEVICE_STRING::ITEMS; i++) {
+			/* read and swap even and uneven characters */
+			char c = (char)info.read<DEVICE_STRING>(i ^ 1);
+			if (Genode::is_whitespace(c) && j == 0)
+				continue;
+			buf[j++] = c;
+		}
+
+		buf[j] = 0;
+
+		/* remove trailing white spaces */
+		while ((j > 0) && (buf[--j] == ' '))
+			buf[j] = 0;
+	}
+
+	bool operator == (char const *other) const
+	{
+		return strcmp(buf, other) == 0;
+	}
+
+	void print(Genode::Output &out) const { Genode::print(out, (char const *)buf); }
+};
+
 
 /**
  * Commands to distinguish between ncq and non-ncq operation
@@ -135,12 +176,21 @@ struct Dma_ext_command : Io_command
  */
 struct Ata_driver : Port_driver
 {
-	Genode::Lazy_volatile_object<Identity>   info;
-	Io_command                              *io_cmd = nullptr;
-	Block::Packet_descriptor                 pending[32];
+	Genode::Allocator &alloc;
 
-	Ata_driver(Port &port, Signal_context_capability state_change)
-	: Port_driver(port, state_change)
+	typedef ::String<Identity::Serial_number> Serial_string;
+	typedef ::String<Identity::Model_number>  Model_string;
+
+	Genode::Lazy_volatile_object<Identity>      info;
+	Genode::Lazy_volatile_object<Serial_string> serial;
+	Genode::Lazy_volatile_object<Model_string>  model;
+
+	Io_command                               *io_cmd = nullptr;
+	Block::Packet_descriptor                  pending[32];
+
+	Ata_driver(Genode::Allocator &alloc,
+	           Port &port, Ahci_root &root, unsigned &sem)
+	: Port_driver(port, root, sem), alloc(alloc)
 	{
 		Port::init();
 		identify_device();
@@ -149,13 +199,13 @@ struct Ata_driver : Port_driver
 	~Ata_driver()
 	{
 		if (io_cmd)
-			destroy (Genode::env()->heap(), io_cmd);
+			destroy(&alloc, io_cmd);
 	}
 
 	unsigned find_free_cmd_slot()
 	{
 		for (unsigned slot = 0; slot < cmd_slots; slot++)
-			if (!pending[slot].valid())
+			if (!pending[slot].size())
 				return slot;
 
 		throw Block::Driver::Request_congestion();
@@ -166,7 +216,7 @@ struct Ata_driver : Port_driver
 		unsigned slots =  Port::read<Ci>() | Port::read<Sact>();
 
 		for (unsigned slot = 0; slot < cmd_slots; slot++) {
-			if ((slots & (1U << slot)) || !pending[slot].valid())
+			if ((slots & (1U << slot)) || !pending[slot].size())
 				continue;
 
 			Block::Packet_descriptor p = pending[slot];
@@ -181,7 +231,7 @@ struct Ata_driver : Port_driver
 		Block::sector_t end = block_number + count - 1;
 
 		for (unsigned slot = 0; slot < cmd_slots; slot++) {
-			if (!pending[slot].valid())
+			if (!pending[slot].size())
 				continue;
 
 			Block::sector_t pending_start = pending[slot].block_number();
@@ -191,8 +241,11 @@ struct Ata_driver : Port_driver
 			    (end          >= pending_start && end          <= pending_end) ||
 			    (pending_start >= block_number && pending_start <= end) ||
 			    (pending_end   >= block_number && pending_end   <= end)) {
-				PWRN("Overlap: pending %llu + %zu, request: %llu + %zu", pending[slot].block_number(),
-				     pending[slot].block_count(), block_number, count);
+
+				Genode::warning("overlap: "
+				                "pending ", pending[slot].block_number(),
+				                " + ", pending[slot].block_count(), ", "
+				                "request: ", block_number, " + ", count);
 				throw Block::Driver::Request_congestion();
 			}
 		}
@@ -233,24 +286,30 @@ struct Ata_driver : Port_driver
 	{
 		Is::access_t status = Port::read<Is>();
 
-		if (verbose)
-			PDBG("irq: %x state: %u", status, state);
-
 		switch (state) {
 
 		case IDENTIFY:
 
-			if (Port::Is::Dss::get(status) || Port::Is::Pss::get(status)) {
+			if (Port::Is::Dss::get(status)
+			    || Port::Is::Pss::get(status)
+			    || Port::Is::Dhrs::get(status)) {
 				info.construct(device_info);
-				if (verbose)
+				serial.construct(*info);
+				model.construct(*info);
+
+				if (verbose) {
+					Genode::log("  model number: ",  Genode::Cstring(model->buf));
+					Genode::log("  serial number: ", Genode::Cstring(serial->buf));
 					info->info();
+				}
 
 				check_device();
 				if (ncq_support())
-					io_cmd = new (Genode::env()->heap()) Ncq_command();
+					io_cmd = new (&alloc) Ncq_command();
 				else
-					io_cmd = new (Genode::env()->heap()) Dma_ext_command();
+					io_cmd = new (&alloc) Dma_ext_command();
 
+				ack_irq();
 			}
 			break;
 

@@ -21,7 +21,7 @@
 #define _PLATFORM_ENV_H_
 
 /* Genode includes */
-#include <base/printf.h>
+#include <base/log.h>
 #include <base/env.h>
 #include <base/heap.h>
 #include <rm_session/client.h>
@@ -71,40 +71,14 @@ struct Upgradeable_client : CLIENT
 
 	void upgrade_ram(Genode::size_t quota)
 	{
-		PINF("upgrading quota donation for Env::%s (%zd bytes)",
-		     CLIENT::Rpc_interface::service_name(), quota);
+		Genode::log("upgrading quota donation for "
+		            "Env::", CLIENT::Rpc_interface::service_name(), " "
+		            "(", quota, " bytes)");
 
 		char buf[128];
-		Genode::snprintf(buf, sizeof(buf), "ram_quota=%zd", quota);
+		Genode::snprintf(buf, sizeof(buf), "ram_quota=%ld", quota);
 
 		Genode::env()->parent()->upgrade(_cap, buf);
-	}
-};
-
-
-struct Genode::Expanding_rm_session_client : Upgradeable_client<Genode::Rm_session_client>
-{
-	Expanding_rm_session_client(Rm_session_capability cap)
-	: Upgradeable_client<Genode::Rm_session_client>(cap) { }
-
-	Local_addr attach(Dataspace_capability ds, size_t size, off_t offset,
-	                  bool use_local_addr, Local_addr local_addr,
-	                  bool executable)
-	{
-		return retry<Rm_session::Out_of_metadata>(
-			[&] () {
-				return Rm_session_client::attach(ds, size, offset,
-				                                 use_local_addr,
-				                                 local_addr,
-				                                 executable); },
-			[&] () { upgrade_ram(8*1024); });
-	}
-
-	Pager_capability add_client(Thread_capability thread)
-	{
-		return retry<Rm_session::Out_of_metadata>(
-			[&] () { return Rm_session_client::add_client(thread); },
-			[&] () { upgrade_ram(8*1024); });
 	}
 };
 

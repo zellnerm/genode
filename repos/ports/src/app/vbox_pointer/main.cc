@@ -127,8 +127,8 @@ void Main::_show_default_pointer()
 	try {
 		_resize_nitpicker_buffer_if_needed(pointer_size);
 	} catch (...) {
-		PERR("%s: could not resize the pointer buffer for %u x %u pixels",
-		     __func__, pointer_size.w(), pointer_size.h());
+		Genode::error(__func__, ": could not resize the pointer buffer "
+		              "for ", pointer_size.w(), "x", pointer_size.h(), " pixels");
 		return;
 	}
 
@@ -151,8 +151,8 @@ void Main::_show_shape_pointer(Policy *p)
 	try {
 		_resize_nitpicker_buffer_if_needed(p->shape_size());
 	} catch (...) {
-		PERR("%s: could not resize the pointer buffer for %u x %u pixels",
-		     __func__, p->shape_size().w(), p->shape_size().h());
+		error(__func__, ": could not resize the pointer buffer "
+		      "for ", p->shape_size(), " pixels");
 		throw;
 	}
 
@@ -190,7 +190,7 @@ void Main::_handle_hover(unsigned)
 	using Vbox_pointer::read_string_attribute;
 
 	_hover_ds.update();
-	if (!_hover_ds.is_valid())
+	if (!_hover_ds.valid())
 		return;
 
 	/* read new hover information from nitpicker's hover report */
@@ -208,7 +208,7 @@ void Main::_handle_hover(unsigned)
 		}
 	}
 	catch (...) {
-		PWRN("could not parse hover report");
+		Genode::warning("could not parse hover report");
 	}
 }
 
@@ -216,14 +216,13 @@ void Main::_handle_hover(unsigned)
 void Main::_handle_xray(unsigned)
 {
 	_xray_ds.update();
-	if (!_xray_ds.is_valid())
+	if (!_xray_ds.valid())
 		return;
 
 	try {
 		Genode::Xml_node node(_xray_ds.local_addr<char>());
 
-		bool xray = node.has_attribute("enabled")
-		         && node.attribute("enabled").has_value("yes");
+		bool xray = node.attribute_value("enabled", false);
 
 		/* update pointer if xray status changed */
 		if (xray != _xray) {
@@ -232,7 +231,7 @@ void Main::_handle_xray(unsigned)
 		}
 	}
 	catch (...) {
-		PWRN("could not parse xray report");
+		Genode::warning("could not parse xray report");
 	}
 }
 

@@ -5,7 +5,7 @@
  */
 
 /*
- * Copyright (C) 2015 Genode Labs GmbH
+ * Copyright (C) 2015-2016 Genode Labs GmbH
  *
  * This file is part of the Genode OS framework, which is distributed
  * under the terms of the GNU General Public License version 2.
@@ -64,6 +64,17 @@ namespace File_system {
 		}
 	}
 
+	static inline void assert_readlink(Directory_service::Readlink_result r)
+	{
+		typedef Directory_service::Readlink_result Result;
+
+		switch (r) {
+		case Result::READLINK_ERR_NO_ENTRY: throw Lookup_failed();
+		case Result::READLINK_ERR_NO_PERM:  throw Permission_denied();
+		case Result::READLINK_OK: break;
+		}
+	}
+
 	static inline void assert_truncate(File_io_service::Ftruncate_result r)
 	{
 		typedef File_io_service::Ftruncate_result Result;
@@ -92,6 +103,7 @@ namespace File_system {
 		typedef Directory_service::Stat_result Result;
 		switch (r) {
 		case Result::STAT_ERR_NO_ENTRY: throw Lookup_failed();
+		case Result::STAT_ERR_NO_PERM:  throw Permission_denied();
 		case Result::STAT_OK: break;
 		}
 	}
@@ -108,4 +120,4 @@ namespace File_system {
 	}
 }
 
-#endif
+#endif /* _VFS__ASSERT_H_ */

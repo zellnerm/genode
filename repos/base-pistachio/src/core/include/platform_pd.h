@@ -37,7 +37,7 @@ namespace Genode {
 			 */
 			enum {
 				PD_BITS      = 9,
-				THREAD_BITS  = 9,
+				THREAD_BITS  = 7,
 				VERSION_BITS = 14 - 1, /* preserve 1 bit, see 'make_l4_id' */
 				PD_FIRST     = 0,
 				PD_MAX       = (1 << PD_BITS)      - 1,
@@ -203,12 +203,10 @@ namespace Genode {
 			/**
 			 * Bind thread to protection domain
 			 *
-			 * \return  0  on success or
-			 *         -1  if thread ID allocation failed.
-			 *
 			 * This function allocates the physical L4 thread ID.
 			 */
-			int bind_thread(Platform_thread *thread);
+			bool bind_thread(Platform_thread *thread);
+
 			int bind_initial_thread(Platform_thread *thread);
 
 			/**
@@ -221,7 +219,7 @@ namespace Genode {
 			/**
 			 * Assign parent interface to protection domain
 			 */
-			int assign_parent(Native_capability parent) { return 0; }
+			void assign_parent(Native_capability parent) { }
 
 			int pd_id() const { return _pd_id; }
 
@@ -232,9 +230,9 @@ namespace Genode {
 
 			/*
 			 * On Pistachio, we don't use directed unmap but rely on the
-			 * in-kernel mapping database. See 'rm_session_support.cc'.
+			 * in-kernel mapping database. See 'region_map_support.cc'.
 			 */
-			void flush(addr_t, size_t) { PDBG("not implemented"); }
+			void flush(addr_t, size_t) { warning(__func__, "not implemented"); }
 	};
 }
 

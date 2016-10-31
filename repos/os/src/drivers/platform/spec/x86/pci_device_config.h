@@ -11,8 +11,10 @@
  * under the terms of the GNU General Public License version 2.
  */
 
-#pragma once
+#ifndef _X86__PCI_DEVICE_CONFIG_H_
+#define _X86__PCI_DEVICE_CONFIG_H_
 
+#include <base/output.h>
 #include <platform_device/platform_device.h>
 #include "pci_config_access.h"
 
@@ -143,13 +145,36 @@ namespace Platform {
 			int device_number()   { return _device; }
 			int function_number() { return _function; }
 
+			void print(Genode::Output &out) const
+			{
+				using Genode::print;
+				using Genode::Hex;
+				print(out, Hex(_bus, Hex::Prefix::OMIT_PREFIX),
+				      ":", Hex(_device, Hex::Prefix::OMIT_PREFIX),
+				      ".", Hex(_function, Hex::Prefix::OMIT_PREFIX));
+			}
+
+			Genode::uint16_t bdf () {
+				return (_bus << 8) | (_device << 3) | (_function & 0x7); }
+
 			/**
 			 * Accessor functions for device information
 			 */
 			unsigned short device_id() { return _device_id; }
 			unsigned short vendor_id() { return _vendor_id; }
 			unsigned int  class_code() { return _class_code; }
-			bool       is_pci_bridge() { return _header_type == HEADER_PCI_TO_PCI; }
+
+			/**
+			 * Return true if device is a PCI bridge
+			 */
+			bool pci_bridge() { return _header_type == HEADER_PCI_TO_PCI; }
+
+			/**
+			 * Return true if device is a PCI bridge
+			 *
+			 * \deprecated  use 'pci_bridge instead
+			 */
+			bool is_pci_bridge() { return pci_bridge(); }
 
 			/**
 			 * Return true if device is valid
@@ -218,3 +243,5 @@ namespace Platform {
 			}
 	};
 }
+
+#endif /* _X86__PCI_DEVICE_CONFIG_H_ */

@@ -20,8 +20,8 @@
 #include <init/child_policy.h>
 #include <os/child_policy_dynamic_rom.h>
 #include <cpu_session/connection.h>
-#include <rm_session/connection.h>
 #include <pd_session/connection.h>
+#include <base/session_label.h>
 
 /* CLI-monitor includes */
 #include <cli_monitor/ram.h>
@@ -39,22 +39,22 @@ class Child_base : public Genode::Child_policy
 
 		class Quota_exceeded : public Genode::Exception { };
 
-		typedef Genode::String<128> Label;
-
 		typedef Genode::size_t size_t;
 
 	private:
 
 		Ram &_ram;
 
-		Label const _label;
+		Genode::Session_label const _label;
+
+		size_t _ram_quota;
+		size_t _ram_limit;
 
 		struct Resources
 		{
 			Genode::Pd_connection  pd;
 			Genode::Ram_connection ram;
 			Genode::Cpu_connection cpu;
-			Genode::Rm_connection  rm;
 
 			Resources(const char *label, Genode::size_t ram_quota)
 			: pd(label), ram(label), cpu(label)
@@ -67,13 +67,14 @@ class Child_base : public Genode::Child_policy
 				if (Genode::env()->ram_session()->transfer_quota(ram.cap(), ram_quota) != 0)
 					throw Quota_exceeded();
 			}
-		};
+		} _resources;
 
-		size_t                   _ram_quota;
-		size_t                   _ram_limit;
-		Resources                _resources;
-		Genode::Service_registry _parent_services;
-		Genode::Rom_connection   _binary_rom;
+		Genode::Child::Initial_thread _initial_thread { _resources.cpu, _resources.pd,
+		                                                _label.string() };
+
+		Genode::Region_map_client _address_space { _resources.pd.address_space() };
+		Genode::Service_registry  _parent_services;
+		Genode::Rom_connection    _binary_rom;
 
 		enum { ENTRYPOINT_STACK_SIZE = 12*1024 };
 		Genode::Rpc_entrypoint _entrypoint;
@@ -109,26 +110,29 @@ class Child_base : public Genode::Child_policy
 		           Genode::size_t                    ram_quota,
 		           Genode::size_t                    ram_limit,
 		           Genode::Signal_context_capability yield_response_sig_cap,
-		           Genode::Signal_context_capability exit_sig_cap)
+		           Genode::Signal_context_capability exit_sig_cap,
+		           Genode::Dataspace_capability      ldso_ds)
 		:
 			_ram(ram),
 			_label(label),
 			_ram_quota(ram_quota),
 			_ram_limit(ram_limit),
 			_resources(_label.string(), _ram_quota),
-			_binary_rom(binary, _label.string()),
+			_binary_rom(Genode::prefixed_label(Genode::Session_label(label),
+			                                   Genode::Session_label(binary)).string()),
 			_entrypoint(&cap_session, ENTRYPOINT_STACK_SIZE, _label.string(), false),
 			_labeling_policy(_label.string()),
 			_binary_policy("binary", _binary_rom.dataspace(), &_entrypoint),
 			_config_policy("config", _entrypoint, &_resources.ram),
-			_child(_binary_rom.dataspace(), _resources.pd.cap(),
-			       _resources.ram.cap(), _resources.cpu.cap(),
-			       _resources.rm.cap(), &_entrypoint, this),
+			_child(_binary_rom.dataspace(), ldso_ds, _resources.pd, _resources.pd,
+			       _resources.ram, _resources.ram, _resources.cpu, _initial_thread,
+			       *Genode::env()->rm_session(), _address_space,
+			       _entrypoint, *this),
 			_yield_response_sigh_cap(yield_response_sig_cap),
 			_exit_sig_cap(exit_sig_cap)
 		{ }
 
-		Label label() const { return _label; }
+		Genode::Session_label label() const { return _label; }
 
 		void configure(char const *config, size_t config_len)
 		{
@@ -149,7 +153,7 @@ class Child_base : public Genode::Child_policy
 				return; /* resource request in flight */
 
 			char buf[128];
-			Genode::snprintf(buf, sizeof(buf), "ram_quota=%zd", amount);
+			Genode::snprintf(buf, sizeof(buf), "ram_quota=%ld", amount);
 			_withdraw_on_yield_response = greedy;
 			_child.yield(buf);
 		}
@@ -327,7 +331,7 @@ class Child_base : public Genode::Child_policy
 
 		void exit(int exit_value) override
 		{
-			PINF("subsystem \"%s\" exited with value %d", name(), exit_value);
+			Genode::log("subsystem \"", name(), "\" exited with value ", exit_value);
 			_exited = true;
 
 			/* trigger destruction of the child */
