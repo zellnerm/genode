@@ -299,6 +299,8 @@ struct Genode::Cpu_session : Session
 	static size_t quota_lim_downscale(size_t const value, size_t const limit) {
 		return ((T)value * limit) >> Cpu_session::QUOTA_LIMIT_LOG2; }
 
+	virtual void set(Ram_session_capability ram_cap) = 0;
+
 	/*********************
 	 ** RPC declaration **
 	 *********************/
@@ -331,6 +333,7 @@ struct Genode::Cpu_session : Session
 	GENODE_RPC(Rpc_ref_account, int, ref_account, Cpu_session_capability);
 	GENODE_RPC(Rpc_transfer_quota, int, transfer_quota, Cpu_session_capability, size_t);
 	GENODE_RPC(Rpc_quota, Quota, quota);
+	GENODE_RPC(Rpc_set, void, set, Ram_session_capability);
 
 	/*
 	 * 'GENODE_RPC_INTERFACE' declaration done manually
@@ -361,8 +364,9 @@ struct Genode::Cpu_session : Session
 	        Meta::Type_tuple<Rpc_ref_account,
 	        Meta::Type_tuple<Rpc_transfer_quota,
 	        Meta::Type_tuple<Rpc_quota,
+		Meta::Type_tuple<Rpc_set,
 	                         Meta::Empty>
-	        > > > > > > > > > > > > > > > > > > > > Rpc_functions;
+	        > > > > > > > > > > > > > > > > > > > > > Rpc_functions;
 };
 
 struct Genode::Cpu_session::Quota

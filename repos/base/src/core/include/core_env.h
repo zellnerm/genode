@@ -31,6 +31,10 @@
 #include <cap_session_component.h>
 #include <ram_session_component.h>
 
+#include <trace_session/trace_session.h>
+#include <trace/source_registry.h>
+#include <trace/control_area.h>
+
 namespace Genode {
 
 	/**
@@ -60,9 +64,10 @@ namespace Genode {
 			                         Range_allocator *ram_alloc,
 			                         Allocator       *md_alloc,
 			                         const char      *args,
+						 Trace::Source_registry &trace_sources,
 			                         size_t           quota_limit = 0)
 			:
-				RAM_SESSION_IMPL(ds_ep, ram_session_ep, ram_alloc, md_alloc, args, quota_limit)
+				RAM_SESSION_IMPL(ds_ep, ram_session_ep, ram_alloc, md_alloc, args, trace_sources, quota_limit)
 			{ }
 
 
@@ -104,6 +109,12 @@ namespace Genode {
 				Lock::Guard lock_guard(_lock);
 				return RAM_SESSION_IMPL::used();
 			}
+
+			void set_label(char label[])
+			{
+				Lock::Guard lock_guard(_lock);
+				RAM_SESSION_IMPL::set_label(label);
+			}
 	};
 
 
@@ -128,13 +139,13 @@ namespace Genode {
 			/**
 			 * Constructor
 			 */
-			Core_env() :
+			Core_env(Trace::Source_registry trace_sources) :
 				_cap_session(platform()->core_mem_alloc(), "ram_quota=4K"),
 				_entrypoint(&_cap_session, ENTRYPOINT_STACK_SIZE, "entrypoint"),
 				_rm_session(&_entrypoint),
 				_ram_session(&_entrypoint, &_entrypoint,
 				             platform()->ram_alloc(), platform()->core_mem_alloc(),
-				             "ram_quota=4M", platform()->ram_alloc()->avail()),
+				             "ram_quota=4M", trace_sources, platform()->ram_alloc()->avail()),
 				_heap(&_ram_session, &_rm_session),
 				_ram_session_cap(_entrypoint.manage(&_ram_session))
 			{ }
@@ -178,6 +189,7 @@ namespace Genode {
 			void reinit(Capability<Parent>::Dst, long) { }
 
 			void reinit_main_thread(Rm_session_capability &) { }
+
 	};
 
 
