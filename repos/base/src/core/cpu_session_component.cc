@@ -37,6 +37,7 @@ Thread_capability Cpu_session_component::create_thread(size_t weight,
                                                        Name const &name,
                                                        addr_t utcb)
 {
+	PWRN("Cpu_session_component: create_thread");
 	unsigned trace_control_index = 0;
 	if (!_trace_control_area.alloc(trace_control_index))
 		throw Out_of_metadata();

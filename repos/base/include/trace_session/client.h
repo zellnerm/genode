@@ -98,6 +98,9 @@ struct Genode::Trace::Session_client : Genode::Rpc_client<Genode::Trace::Session
 		Subject_info subject_info(Subject_id subject) override {
 			return call<Rpc_subject_info>(subject); }
 
+		int deploy_thread(Threads tid, unsigned prio) override { //gmc
+					return call<Rpc_deploy_thread>(tid, prio); }
+
 		Dataspace_capability buffer(Subject_id subject) override {
 			return call<Rpc_buffer>(subject); }
 

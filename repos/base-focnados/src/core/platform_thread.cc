@@ -54,6 +54,9 @@ int Platform_thread::start(void *ip, void *sp)
 		return -1;
 	}
 
+	 PWRN("[Platform_thread: start] %lx started!",
+	                 (unsigned long) _thread.local.dst());
+
 	_state = RUNNING;
 
 	/* set ip and sp and run the thread */
@@ -324,4 +327,16 @@ Platform_thread::~Platform_thread()
 	 */
 	if (_platform_pd)
 		_platform_pd->unbind_thread(this);
+}
+
+//gmc
+unsigned Platform_thread::prio() const
+{
+    return _prio;
+}
+
+//gmc
+unsigned long Platform_thread::thread_id() const
+{
+    return _thread.local.dst();
 }

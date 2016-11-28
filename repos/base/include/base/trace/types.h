@@ -33,6 +33,7 @@ namespace Genode { namespace Trace {
 	struct Subject_id;
 	struct Execution_time;
 	struct Subject_info;
+	struct Threads;
 } }
 
 
@@ -77,6 +78,12 @@ struct Genode::Trace::Execution_time
 	Execution_time(unsigned long long value) : value(value) { }
 };
 
+struct Genode::Trace::Threads
+{
+	unsigned long id[10];
+	unsigned prio[10];
+	int n;
+};
 
 /**
  * Subject information
@@ -108,6 +115,8 @@ class Genode::Trace::Subject_info
 		Policy_id          _policy_id;
 		Execution_time     _execution_time;
 		Affinity::Location _affinity;
+		unsigned	   _prio;
+		unsigned long _thread_id;//gmc
 
 	public:
 
@@ -117,11 +126,13 @@ class Genode::Trace::Subject_info
 		             Thread_name   const &thread_name,
 		             State state, Policy_id policy_id,
 		             Execution_time execution_time,
-		             Affinity::Location affinity)
+		             Affinity::Location affinity,
+					 unsigned prio,
+					 unsigned long thread_id)
 		:
 			_session_label(session_label), _thread_name(thread_name),
 			_state(state), _policy_id(policy_id),
-			_execution_time(execution_time), _affinity(affinity)
+			_execution_time(execution_time), _affinity(affinity), _prio(prio), _thread_id(thread_id)
 		{ }
 
 		Session_label const &session_label()  const { return _session_label; }
@@ -130,6 +141,8 @@ class Genode::Trace::Subject_info
 		Policy_id            policy_id()      const { return _policy_id; }
 		Execution_time       execution_time() const { return _execution_time; }
 		Affinity::Location   affinity()       const { return _affinity; }
+		unsigned	     prio()	      const { return _prio; }
+		unsigned 		 thread_id()  const { return _thread_id;} //gmc
 };
 
 #endif /* _INCLUDE__BASE__TRACE__TYPES_H_ */

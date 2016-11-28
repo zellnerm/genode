@@ -238,6 +238,8 @@ class Genode::Trace::Subject
 		{
 			Execution_time execution_time;
 			Affinity::Location affinity;
+			unsigned prio;
+			unsigned long thread_id; //gmc
 
 			{
 				Locked_ptr<Source> source(_source);
@@ -246,11 +248,13 @@ class Genode::Trace::Subject
 					Trace::Source::Info const info = source->info();
 					execution_time = info.execution_time;
 					affinity       = info.affinity;
+					prio=info.prio;
+					thread_id = info.thread_id;//gmc
 				}
 			}
 
 			return Subject_info(_label, _name, _state(), _policy_id,
-			                    execution_time, affinity);
+			                    execution_time, affinity, prio, thread_id);
 		}
 
 		Dataspace_capability buffer() const { return _buffer.dataspace(); }

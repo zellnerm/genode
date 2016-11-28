@@ -56,6 +56,8 @@ namespace Genode {
 
 			void _create_thread(void);
 			void _finalize_construction(const char *name);
+			void _create_thread1(void);
+			void _finalize_construction1(const char *name);
 			bool _in_syscall(Fiasco::l4_umword_t flags);
 
 		public:
@@ -177,7 +179,10 @@ namespace Genode {
 			 */
 			unsigned long long execution_time() const { return 0; }
 
+			//gmc
+			unsigned prio() const;
 
+			unsigned long thread_id() const;
 			/*******************************
 			 ** Fiasco-specific Accessors **
 			 *******************************/

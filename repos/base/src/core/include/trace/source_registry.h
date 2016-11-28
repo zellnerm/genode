@@ -56,6 +56,8 @@ class Genode::Trace::Source
 			Thread_name        name;
 			Execution_time     execution_time;
 			Affinity::Location affinity;
+			unsigned 		   prio; //gmc
+			unsigned long	   thread_id; //gmc
 		};
 
 		/**

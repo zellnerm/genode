@@ -101,6 +101,7 @@ class Genode::Trace::Session_component
 		void pause(Subject_id);
 		void resume(Subject_id);
 		Subject_info subject_info(Subject_id);
+		int deploy_thread(Threads, unsigned); //gmc
 		Dataspace_capability buffer(Subject_id);
 		void free(Subject_id);
 };
