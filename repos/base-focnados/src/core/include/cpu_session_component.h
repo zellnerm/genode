@@ -30,6 +30,7 @@
 #include <trace/control_area.h>
 #include <trace/source_registry.h>
 
+
 namespace Genode {
 
 	/**
@@ -77,6 +78,25 @@ namespace Genode {
 			:
 				_session_label(label), _name(name),
 				_platform_thread(name.string(), priority, utcb), _bound(false),
+				_sigh(sigh), _trace_control_index(trace_control_index),
+				_trace_source(*this, trace_control)
+			{
+				update_exception_sigh();
+			}
+
+			Cpu_thread_component(size_t const weight,
+								 size_t const quota,
+								 Session_label const &label,
+								 Thread_name const &name,
+								 unsigned priority, unsigned deadline,
+								 addr_t utcb,
+								 Signal_context_capability sigh,
+								 unsigned trace_control_index,
+								 Trace::Control &trace_control,
+								 Affinity::Location location)
+			:
+				_session_label(label), _name(name),
+				_platform_thread(name.string(), priority, deadline, location, utcb), _bound(false),
 				_sigh(sigh), _trace_control_index(trace_control_index),
 				_trace_source(*this, trace_control)
 			{
@@ -165,6 +185,15 @@ namespace Genode {
 			Trace::Source_registry    &_trace_sources;
 			Trace::Control_area        _trace_control_area;
 
+			long*			   		   _sched_type;
+
+		    enum{
+		    	ALL = 0,
+				FIXED_PRIO = 1,
+				DEADLINE   = 2
+		    };
+
+
 			size_t                      _weight;
 			size_t                      _quota;
 			Cpu_session_component *     _ref;
@@ -228,8 +257,10 @@ namespace Genode {
 			/***************************
 			 ** CPU session interface **
 			 ***************************/
-
+			int set_sched_type(unsigned core, unsigned sched_type);
+			int get_sched_type(unsigned core);
 			Thread_capability create_thread(size_t, Name const &, addr_t);
+			Thread_capability create_fp_edf_thread(size_t, Name const &, addr_t, unsigned, unsigned, unsigned);
 			Ram_dataspace_capability utcb(Thread_capability thread);
 			void kill_thread(Thread_capability);
 			Thread_capability first();

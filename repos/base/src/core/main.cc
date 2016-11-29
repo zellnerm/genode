@@ -39,6 +39,7 @@
 
 using namespace Genode;
 
+
 /* pool of provided core services */
 static Service_registry local_services;
 
