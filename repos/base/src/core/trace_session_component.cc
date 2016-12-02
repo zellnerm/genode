@@ -24,7 +24,6 @@ namespace Fiasco {
 #include <l4/sys/scheduler.h>
 #include <l4/sys/thread.h>
 #include <l4/sys/types.h>
-#include <l4/sys/rq_manager.h>
 }
 
 using namespace Genode;
