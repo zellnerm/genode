@@ -54,6 +54,9 @@ int Platform_thread::start(void *ip, void *sp)
 		return -1;
 	}
 
+	 PWRN("[Platform_thread: start] %lx started!",
+	                 (unsigned long) _thread.local.dst());
+
 	_state = RUNNING;
 
 	/* set ip and sp and run the thread */
