@@ -35,6 +35,7 @@ namespace Genode { namespace Trace {
 	struct CPU_info;
 	struct RAM_info;
 	struct SCHEDULER_info;
+	struct Threads;
 } }
 
 
@@ -79,6 +80,12 @@ struct Genode::Trace::Execution_time
 	Execution_time(unsigned long long value) : value(value) { }
 };
 
+struct Genode::Trace::Threads
+{
+	unsigned long id[10];
+	unsigned prio[10];
+	int n;
+};
 
 /**
  * Subject information
