@@ -88,8 +88,6 @@ struct Genode::Trace::Session : Genode::Session
 
 	virtual SCHEDULER_info scheduler_info(Subject_id) = 0;
 
-	virtual int deploy_thread(Threads, unsigned) = 0;
-
 	/**
 	 * Obtain trace buffer of given subject
 	 *
@@ -165,11 +163,10 @@ struct Genode::Trace::Session : Genode::Session
 	        Meta::Type_tuple<Rpc_cpu_info,
 		Meta::Type_tuple<Rpc_ram_info,
 		Meta::Type_tuple<Rpc_scheduler_info,
-		Meta::Type_tuple<Rpc_deploy_thread,
 	        Meta::Type_tuple<Rpc_buffer,
 	        Meta::Type_tuple<Rpc_free,
 	                         Meta::Empty>
-	        > > > > > > > > > > > > > > Rpc_functions;
+	        > > > > > > > > > > > > > Rpc_functions;
 };
 
 #endif /* _INCLUDE__TRACE_SESSION__TRACE_SESSION_H_ */
