@@ -1,5 +1,5 @@
 #TARGET += is the name of the binary to be created. This is the only mandatory variable to be defined in a target.mk file.
-TARGET = linpack
+TARGET = cond_42
 
 #REQUIRES += expresses the requirements that must be satisfied in order to build the target. You find more details about the underlying mechanism in Section Specializations.
 
@@ -8,7 +8,7 @@ TARGET = linpack
 LIBS = base stdcxx
 
 #SRC_CC += contains the list of .cc source files. The default search location for source codes is the directory, where the target.mk file resides.
-SRC_CC = linpack.cpp
+SRC_CC = cond_42.cpp
 
 #SRC_C += contains the list of .c source files.
 

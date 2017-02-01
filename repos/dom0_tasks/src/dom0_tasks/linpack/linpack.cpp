@@ -1,8 +1,11 @@
-# include <cstdlib>
-# include <iostream>
-# include <iomanip>
-# include <cmath>
-# include <ctime>
+#include <iostream>
+#include <iomanip>
+#include <cmath>
+#include <base/printf.h>
+#include <base/thread.h>
+#include <base/sleep.h>
+#include <os/config.h>
+
 
 using namespace std;
 
@@ -44,43 +47,66 @@ int main ( )
 //    N is the problem size.
 //
 {
-# define N 1000
-# define LDA ( N + 1 )
+//# define N 1000
+//# define LDA ( N + 1 )
 
   float *a;
   float a_max;
   float *b;
   float b_max;
-  float cray = 0.056;
-  float eps;
-  int i;
+  //float cray = 0.056;
+  //float eps;
+  unsigned int i;
   int info;
   int *ipvt;
-  int j;
+  unsigned int j;
   int job;
-  float ops;
+  //float ops;
   float *resid;
   float resid_max;
-  float residn;
+  //float residn;
   float *rhs;
-  double t1;
-  double t2;
-  double time[6];
-  float total;
+  //double t1;
+  //double t2;
+  //double time[6];
+  //float total;
   float *x;
+  
+  unsigned int N = 1000;
+  //read argument 
+  const Genode::Xml_node& config_node = Genode::config()->xml_node();
+  config_node.sub_node("arg1").value<unsigned int>(&N);
+  
+  unsigned int LDA = N+1;
 
-  timestamp ( );
-  cout << "\n";
-  cout << "LINPACK_BENCH_S\n";
-  cout << "  C++ version\n";
-  cout << "\n";
-  cout << "  The LINPACK benchmark.\n";
-  cout << "  Language: C++\n";
-  cout << "  Datatype: Single precision\n";
-  cout << "  Matrix order N               = " << N << "\n";
-  cout << "  Leading matrix dimension LDA = " << LDA << "\n";
 
-  ops = ( float ) ( 2 * N * N * N ) / 3.0 + 2.0 * ( float ) ( N * N );
+
+  PINF("Problemsize %d", N);
+
+  //timestamp ( );
+
+  PINF("Starting linpack with size %d", N);
+  PINF("LINPACK_BENCH_S");
+  PINF("  c++ version");
+  PINF("");
+  PINF("  The LINPACK benchmark.");
+  PINF("  Language: C++");
+  PINF("Datatype: Single precision");
+  PINF("Matrix order N = %d" , N);
+  PINF("Leading matrix dimension LDA = %d", LDA);
+
+
+  //cout << "\n";
+  //cout << "LINPACK_BENCH_S\n";
+  //cout << "  C++ version\n";
+  //cout << "\n";
+  //cout << "  The LINPACK benchmark.\n";
+  //cout << "  Language: C++\n";
+  //cout << "  Datatype: Single precision\n";
+  //cout << "  Matrix order N               = " << N << "\n";
+  //cout << "  Leading matrix dimension LDA = " << LDA << "\n";
+
+  //ops = ( float ) ( 2 * N * N * N ) / 3.0 + 2.0 * ( float ) ( N * N );
 //
 //  Allocate space for arrays.
 //
@@ -113,31 +139,31 @@ int main ( )
       b[i] = b[i] + a[i+j*LDA] * x[j];
     }
   }
-  t1 = cpu_time ( );
+  //t1 = cpu_time ( );
 
   info = sgefa ( a, LDA, N, ipvt );
 
   if ( info != 0 )
   {
-    cout << "\n";
-    cout << "LINPACK_BENCH_S - Fatal error!\n";
-    cout << "  The matrix A is apparently singular.\n";
-    cout << "  Abnormal end of execution.\n";
+    //cout << "\n";
+    //cout << "LINPACK_BENCH_S - Fatal error!\n";
+    //cout << "  The matrix A is apparently singular.\n";
+    //cout << "  Abnormal end of execution.\n";
     return 1;
   }
 
-  t2 = cpu_time ( );
-  time[0] = t2 - t1;
+  //t2 = cpu_time ( );
+  //time[0] = t2 - t1;
 
-  t1 = cpu_time ( );
+  //t1 = cpu_time ( );
 
   job = 0;
   sgesl ( a, LDA, N, ipvt, b, job );
 
-  t2 = cpu_time ( );
-  time[1] = t2 - t1;
+  //t2 = cpu_time ( );
+  //time[1] = t2 - t1;
 
-  total = time[0] + time[1];
+  //total = time[0] + time[1];
 
   delete [] a;
 //
@@ -180,11 +206,11 @@ int main ( )
     b_max = r4_max ( b_max, r4_abs ( b[i] ) );
   }
 
-  eps = r4_epsilon ( );
+  //eps = r4_epsilon ( );
 
-  residn = resid_max /  ( ( float ) N * a_max * b_max * eps );
+  //residn = resid_max /  ( ( float ) N * a_max * b_max * eps );
 
-  time[2] = total;
+  /*time[2] = total;
   if ( 0.0 < total )
   {
     time[3] = ops / ( 1.0E+06 * total );
@@ -196,24 +222,25 @@ int main ( )
   time[4] = 2.0 / time[3];
   time[5] = total / cray;
 
-  cout << "\n";
-  cout << "     Norm. Resid      Resid           MACHEP         X[1]          X[N]\n";
-  cout << "\n";
-  cout << setw(14) << residn << "  "
-       << setw(14) << resid_max << "  "
-       << setw(14) << eps       << "  "
-       << setw(14) << b[0] << "  "
-       << setw(14) << b[N-1] << "\n";
-  cout << "\n";
-  cout << "      Factor     Solve      Total     MFLOPS       Unit      Cray-Ratio\n";
-  cout << "\n";
-  cout << setw(9) << time[0] << "  "
-       << setw(9) << time[1] << "  "
-       << setw(9) << time[2] << "  "
-       << setw(9) << time[3] << "  "
-       << setw(9) << time[4] << "  "
-       << setw(9) << time[5] << "\n";
+  //cout << "\n";
+  //cout << "     Norm. Resid      Resid           MACHEP         X[1]          X[N]\n";
+  //cout << "\n";
+  //cout << setw(14) << residn << "  "
+  //     << setw(14) << resid_max << "  "
+  //     << setw(14) << eps       << "  "
+  //     << setw(14) << b[0] << "  "
+  //     << setw(14) << b[N-1] << "\n";
+  //cout << "\n";
+  //cout << "      Factor     Solve      Total     MFLOPS       Unit      Cray-Ratio\n";
+  //cout << "\n";
+  //cout << setw(9) << time[0] << "  "
+  //     << setw(9) << time[1] << "  "
+  //     << setw(9) << time[2] << "  "
+  //     << setw(9) << time[3] << "  "
+  //     << setw(9) << time[4] << "  "
+  //     << setw(9) << time[5] << "\n";
 
+*/
   delete [] a;
   delete [] b;
   delete [] ipvt;
@@ -221,12 +248,14 @@ int main ( )
   delete [] rhs;
   delete [] x;
 
-  cout << "\n";
-  cout << "LINPACK_BENCH_S\n";
-  cout << "  Normal end of execution.\n";
+  //cout << "\n";
+  //cout << "LINPACK_BENCH_S\n";
+  //cout << "  Normal end of execution.\n";
 
-  cout << "\n";
-  timestamp ( );
+  //cout << "\n";
+  //timestamp ( );
+
+  PINF("Linpack finished!");
 
   return 0;
 # undef LDA
@@ -1179,7 +1208,7 @@ void timestamp ( void )
   strftime ( time_buffer, TIME_SIZE, "%d %B %Y %I:%M:%S %p", tm );
   //len = strftime ( time_buffer, TIME_SIZE, "%d %B %Y %I:%M:%S %p", tm );
 
-  cout << time_buffer << "\n";
+  //cout << time_buffer << "\n";
 
   return;
 # undef TIME_SIZE
