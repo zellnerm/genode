@@ -2,6 +2,9 @@
 *.orig
 *.swp
 *.rej
+*.cproject
+*.project
+*.settings/
 
 /build
 /contrib
