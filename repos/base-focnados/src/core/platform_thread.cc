@@ -275,7 +275,9 @@ void Platform_thread::_finalize_construction(const char *name)
 
 	l4_scheduler_run_thread(L4_BASE_SCHEDULER_CAP, _thread.local.dst(),
 	                        &params);
-	_id = l4_utcb_mr()->mr[7];
+	_id = l4_utcb_mr()->mr[0];
+	_arrival_time = l4_utcb_mr()->mr[1];
+	//PDBG("name:%s id:%d arrived:%llu", name, _id, _arrival_time);
 }
 
 
@@ -307,10 +309,24 @@ unsigned long long Platform_thread::execution_time() const
 
 	if (_utcb) {
 		l4_thread_stats_time(_thread.local.dst());
-		time = *(l4_kernel_clock_t*)&l4_utcb_mr()->mr[0];
+		time = *(l4_kernel_clock_t*)&l4_utcb_mr()->mr[0];		
 	}
-
 	return time;
+}
+
+unsigned long long Platform_thread::start_time() const
+{
+	unsigned long long time = 0;
+	if (_utcb) {
+		l4_thread_stats_time(_thread.local.dst());
+		time = l4_utcb_mr()->mr[2];
+	}
+	return time;
+}
+
+unsigned long long Platform_thread::arrival_time() const
+{
+	return _arrival_time;
 }
 
 unsigned Platform_thread::prio() const

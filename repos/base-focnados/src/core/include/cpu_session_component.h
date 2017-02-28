@@ -135,6 +135,8 @@ namespace Genode {
 			{
 				return { _platform_thread.execution_time(),
 					 _platform_thread.affinity(),
+					 _platform_thread.start_time(),
+					 _platform_thread.arrival_time(),
 					 _platform_thread.prio(),
 					 _platform_thread.pos_rq()
 					};
