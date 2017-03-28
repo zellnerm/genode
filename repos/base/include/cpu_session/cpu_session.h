@@ -323,6 +323,8 @@ struct Genode::Cpu_session : Session
 
 	virtual void set(Ram_session_capability ram_cap) = 0;
 
+	virtual void deploy_queue(Genode::Dataspace_capability ds) = 0;
+
 	/*********************
 	 ** RPC declaration **
 	 *********************/
@@ -361,6 +363,7 @@ struct Genode::Cpu_session : Session
 	GENODE_RPC(Rpc_transfer_quota, int, transfer_quota, Cpu_session_capability, size_t);
 	GENODE_RPC(Rpc_quota, Quota, quota);
 	GENODE_RPC(Rpc_set, void, set, Ram_session_capability);
+	GENODE_RPC(Rpc_deploy_queue, void, deploy_queue, Genode::Dataspace_capability);
 
 	/*
 	 * 'GENODE_RPC_INTERFACE' declaration done manually
@@ -395,8 +398,9 @@ struct Genode::Cpu_session : Session
 	        Meta::Type_tuple<Rpc_transfer_quota,
 	        Meta::Type_tuple<Rpc_quota,
 		Meta::Type_tuple<Rpc_set,
+		Meta::Type_tuple<Rpc_deploy_queue,
 	                         Meta::Empty>
-	        > > > > > > > > > > > > > > > > > > > > > > > > Rpc_functions;
+	        > > > > > > > > > > > > > > > > > > > > > > > > > Rpc_functions;
 };
 
 struct Genode::Cpu_session::Quota

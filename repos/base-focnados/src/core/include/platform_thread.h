@@ -207,6 +207,8 @@ namespace Genode {
 
 			int pos_rq() const;
 
+			void deploy_queue(Genode::Dataspace_capability ds) const;
+
 			/*******************************
 			 ** Fiasco-specific Accessors **
 			 *******************************/

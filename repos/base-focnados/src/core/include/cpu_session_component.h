@@ -320,6 +320,7 @@ namespace Genode {
 			int transfer_quota(Cpu_session_capability, size_t);
 			Quota quota() override;
 			void set(Ram_session_capability ram_cap);
+			void deploy_queue(Genode::Dataspace_capability ds);
 
 			/***********************************
 			 ** Fiasco.OC specific extensions **
