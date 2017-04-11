@@ -205,7 +205,7 @@ namespace Genode {
 
 			unsigned num_cores() const;
 
-			int pos_rq() const;
+			void rq(Genode::Dataspace_capability ds) const;
 
 			void deploy_queue(Genode::Dataspace_capability ds) const;
 

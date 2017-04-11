@@ -138,7 +138,6 @@ namespace Genode {
 					 _platform_thread.start_time(),
 					 _platform_thread.arrival_time(),
 					 _platform_thread.prio(),
-					 _platform_thread.pos_rq()
 					};
 			}
 			Trace::Source::Static_Info static_info() const
@@ -321,6 +320,7 @@ namespace Genode {
 			Quota quota() override;
 			void set(Ram_session_capability ram_cap);
 			void deploy_queue(Genode::Dataspace_capability ds);
+			void rq(Genode::Dataspace_capability ds);
 
 			/***********************************
 			 ** Fiasco.OC specific extensions **
