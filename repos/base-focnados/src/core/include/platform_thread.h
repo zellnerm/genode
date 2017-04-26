@@ -54,6 +54,8 @@ namespace Genode {
 			unsigned           _prio;
 			unsigned	   _dl;		
 			long unsigned int  _id;
+			unsigned long long _start_time;
+			unsigned long long _arrival_time;
 
 			Affinity::Location _location;
 
@@ -187,6 +189,10 @@ namespace Genode {
 			 */
 			unsigned long long execution_time() const;
 
+			unsigned long long start_time() const;
+
+			unsigned long long arrival_time() const;
+
 			unsigned prio() const;
 
 			unsigned id() const;
@@ -198,6 +204,10 @@ namespace Genode {
 			bool core_is_online(unsigned num) const;
 
 			unsigned num_cores() const;
+
+			void rq(Genode::Dataspace_capability ds) const;
+
+			void deploy_queue(Genode::Dataspace_capability ds) const;
 
 			/*******************************
 			 ** Fiasco-specific Accessors **

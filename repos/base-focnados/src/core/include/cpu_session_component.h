@@ -112,10 +112,15 @@ namespace Genode {
 			{
 				return { _session_label, _name,
 				         _platform_thread.execution_time(),
+				         _platform_thread.affinity() };
+				/*
+				return { _session_label, _name,
+				         _platform_thread.execution_time(),
 				         _platform_thread.affinity(),
 					 _platform_thread.prio(),
 					 _platform_thread.id(),
 					 _platform_thread.foc_id(),
+					 _platform_thread.pos_rq(),
 					 _platform_thread.idle(0),
 					 _platform_thread.idle(1),
 					 _platform_thread.idle(2),
@@ -124,7 +129,33 @@ namespace Genode {
 					 _platform_thread.core_is_online(1),
 					 _platform_thread.core_is_online(2),
 					 _platform_thread.core_is_online(3),
-					 _platform_thread.num_cores() };
+					 _platform_thread.num_cores() };*/
+			}
+			Trace::Source::Dynamic_Info dynamic_info() const
+			{
+				return { _platform_thread.execution_time(),
+					 _platform_thread.affinity(),
+					 _platform_thread.start_time(),
+					 _platform_thread.arrival_time(),
+					 _platform_thread.prio(),
+					};
+			}
+			Trace::Source::Static_Info static_info() const
+			{
+				return { _platform_thread.id(),
+					 _platform_thread.foc_id() };
+			}
+			Trace::Source::Global_Info global_info() const
+			{
+				return { _platform_thread.idle(0),
+					 _platform_thread.idle(1),
+					 _platform_thread.idle(2),
+					 _platform_thread.idle(3),
+					 _platform_thread.core_is_online(0),
+					 _platform_thread.core_is_online(1),
+					 _platform_thread.core_is_online(2),
+					 _platform_thread.core_is_online(3),
+					 _platform_thread.num_cores()};
 			}
 
 
@@ -288,6 +319,8 @@ namespace Genode {
 			int transfer_quota(Cpu_session_capability, size_t);
 			Quota quota() override;
 			void set(Ram_session_capability ram_cap);
+			void deploy_queue(Genode::Dataspace_capability ds);
+			void rq(Genode::Dataspace_capability ds);
 
 			/***********************************
 			 ** Fiasco.OC specific extensions **
