@@ -323,6 +323,7 @@ namespace Genode {
 			void set(Ram_session_capability ram_cap);
 			void deploy_queue(Genode::Dataspace_capability ds);
 			void rq(Genode::Dataspace_capability ds);
+			void dead(Genode::Dataspace_capability ds);
 
 			/***********************************
 			 ** Fiasco.OC specific extensions **
