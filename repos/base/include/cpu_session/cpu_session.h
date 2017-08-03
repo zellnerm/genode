@@ -329,6 +329,8 @@ struct Genode::Cpu_session : Session
 
 	virtual void dead(Genode::Dataspace_capability ds) = 0;	
 
+	virtual void killed() = 0;
+
 	/*********************
 	 ** RPC declaration **
 	 *********************/
@@ -370,6 +372,7 @@ struct Genode::Cpu_session : Session
 	GENODE_RPC(Rpc_deploy_queue, void, deploy_queue, Genode::Dataspace_capability);
 	GENODE_RPC(Rpc_rq, void, rq, Genode::Dataspace_capability);
 	GENODE_RPC(Rpc_dead, void, dead, Genode::Dataspace_capability);
+	GENODE_RPC(Rpc_killed, void, killed);
 
 	/*
 	 * 'GENODE_RPC_INTERFACE' declaration done manually
@@ -407,8 +410,9 @@ struct Genode::Cpu_session : Session
 		Meta::Type_tuple<Rpc_deploy_queue,
 		Meta::Type_tuple<Rpc_rq,
 		Meta::Type_tuple<Rpc_dead,
+		Meta::Type_tuple<Rpc_killed,
 	                         Meta::Empty>
-	        > > > > > > > > > > > > > > > > > > > > > > > > > > > Rpc_functions;
+	        > > > > > > > > > > > > > > > > > > > > > > > > > > > > Rpc_functions;
 };
 
 struct Genode::Cpu_session::Quota
