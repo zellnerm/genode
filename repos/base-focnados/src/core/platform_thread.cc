@@ -330,6 +330,11 @@ unsigned long long Platform_thread::arrival_time() const
 	return _arrival_time;
 }
 
+unsigned long long Platform_thread::kill_time() const
+{
+	return _kill_time;
+}
+
 unsigned Platform_thread::prio() const
 {
 	return _prio;
@@ -401,6 +406,14 @@ void Platform_thread::deploy_queue(Genode::Dataspace_capability ds) const
 			PWRN("Scheduling queue has failed!\n");
 			return;
 		}
+}
+
+void Platform_thread::killed()
+{
+	if (_utcb) {
+		l4_thread_stats_time(_thread.local.dst());
+		_kill_time = l4_utcb_mr()->mr[4];
+	}
 }
 
 Platform_thread::Platform_thread(const char *name, unsigned prio, unsigned deadline, Affinity::Location location, addr_t)

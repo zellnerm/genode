@@ -3,6 +3,11 @@
 *.swp
 *.rej
 
+genode-*
+download*
+toolchain*
+
+/usr
 /build
 /contrib
 /repos/base-codezero/contrib

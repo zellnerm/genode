@@ -109,6 +109,9 @@ struct Genode::Cpu_session_client : Rpc_client<Cpu_session>
 	void dead(Genode::Dataspace_capability ds) override {
 		call<Rpc_dead>(ds); }
 
+	void killed() override {
+		call<Rpc_killed>(); }
+
 	Quota quota() override { return call<Rpc_quota>(); }
 };
 
